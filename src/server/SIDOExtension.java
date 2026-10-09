@@ -1,49 +1,38 @@
 package server;
 
 import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import com.smartfoxserver.SmartFoxServer;
-import com.smartfoxserver.components.login.LoginAssistantComponent;
 import com.smartfoxserver.components.signup.ISignUpAssistantPlugin;
 import com.smartfoxserver.components.signup.PasswordMode;
 import com.smartfoxserver.components.signup.SignUpAssistantComponent;
 import com.smartfoxserver.components.signup.SignUpConfiguration;
 import com.smartfoxserver.components.signup.SignUpErrorCodes;
 import com.smartfoxserver.components.signup.SignUpValidationException;
-import com.smartfoxserver.core.ISFSEvent;
-import com.smartfoxserver.core.SFSEventParam;
 import com.smartfoxserver.core.SFSEventType;
 import com.smartfoxserver.entities.Room;
 import com.smartfoxserver.entities.User;
 import com.smartfoxserver.entities.data.ISFSObject;
-import com.smartfoxserver.entities.data.SFSObject;
-import com.smartfoxserver.exceptions.SFSException;
-import com.smartfoxserver.exceptions.SFSLoginException;
 import com.smartfoxserver.extensions.SFSExtension;
 import com.smartfoxserver.mmo.MMORoom;
 import com.smartfoxserver.mmo.Vec3D;
 
+import character.CharacterManager;
 import navmesh.NavMeshLoader;
 import navmesh.NavMeshPolygon;
-import navmesh.NavMeshValidator;
 import npc.NpcItem;
 import npc.NpcManager;
-import world.AStar;
 import world.MapManager;
 import world.ServerNavMesh;
-
-import com.smartfoxserver.exceptions.SFSErrorCode;
-import com.smartfoxserver.exceptions.SFSErrorData;
 
 import java.io.IOException;
 import java.nio.file.Path;
 
-public class SIDOExtension extends SFSExtension {
+public class SidoExtension extends SFSExtension {
 
+	private CharacterManager characterManager;
 	private NpcManager npcManager;
 	private MapManager mapManager;
 	private ServerNavMesh lorenciaNavMesh;
@@ -54,160 +43,110 @@ public class SIDOExtension extends SFSExtension {
 	@Override
 	public void init() {
 		// Envia uma mensagem para o log do servidor ao iniciar
-		trace("A Extensao do SIDO foi iniciada com sucesso!");
-		
+		trace("A Extensao do Sido foi iniciada com sucesso!");
+
 		// 1. Obtém a instância global do SmartFoxServer
-	    SmartFoxServer sfs = SmartFoxServer.getInstance();
-		
+		SmartFoxServer sfs = SmartFoxServer.getInstance();
+
 		try {
-			lorenciaNavMesh =
-			        NavMeshLoader.load(Path.of("data", "maps", "Norencia.navmesh"));
+			
+			lorenciaNavMesh = NavMeshLoader.load(Path.of("data", "maps", "Norencia.navmesh"));
+			
 		} catch (IOException e) {
+			
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 
+		MMORoom room = (MMORoom) getParentZone().getRoomByName("Norencia");
+
+		characterManager = new CharacterManager();
 		mapManager = new MapManager();
-		
-		MMORoom room =
-		        (MMORoom) getParentZone()
-		                .getRoomByName("Norencia");
-		
+
 		npcManager =
 		        new NpcManager(
-		        		room,
-		        		lorenciaNavMesh
+		                room,
+		                lorenciaNavMesh,
+		                characterManager
 		        );
 
-		/*try {
+		/*
+		 * try {
+		 * 
+		 * mapManager.loadMap("norencia", Path.of("data", "maps", "Norencia.navmesh"));
+		 * 
+		 * 
+		 * //mapManager.loadMap("noria", Path.of("data", "maps", "Noria.navmesh"));
+		 * 
+		 * //mapManager.loadMap("devias", Path.of("data", "maps", "Devias.navmesh"));
+		 * 
+		 * } catch (Exception e) {
+		 * 
+		 * trace("Falha ao carregar mapas.");
+		 * 
+		 * throw new RuntimeException(e); }
+		 */
 
-			mapManager.loadMap("norencia", Path.of("data", "maps", "Norencia.navmesh"));
-			
+		NpcItem npcTest = npcManager.spawnNpc(1, // npcTypeId
+				-238.8f, // X
+				17.3999f, // Y
+				17.2f, // Z
+				15.0f // detectionRange
+		);
 
-			//mapManager.loadMap("noria", Path.of("data", "maps", "Noria.navmesh"));
-
-			//mapManager.loadMap("devias", Path.of("data", "maps", "Devias.navmesh"));
-
-		} catch (Exception e) {
-
-			trace("Falha ao carregar mapas.");
-
-			throw new RuntimeException(e);
-		}*/
-		
-		
-		NpcItem npcTest =
-		        npcManager.spawnNpc(
-		                1,          // npcTypeId
-		                -238.8f,    // X
-		                17.3999f,   // Y
-		                17.2f,      // Z
-		                15.0f       // detectionRange
-		        );
-		
 		if (npcTest != null) {
 
-		    trace(
-		            "NPC TEST criado."
-		                    + " ID="
-		                    + npcTest.getId()
-		    );
+			trace("NPC TEST criado." + " ID=" + npcTest.getId());
 
-		    trace(
-		            "NPCs registrados: "
-		                    + npcManager.getNpcCount()
-		    );
+			trace("NPCs registrados: " + npcManager.getNpcCount());
 		}
-		
-		NavMeshPolygon p0 =
-				lorenciaNavMesh.getPolygon(0);
 
-		NavMeshPolygon p500 =
-				lorenciaNavMesh.getPolygon(500);
-		
-		NpcItem npc1 =
-		        npcManager.spawnNpc(
-		                1,
-		                p0.centerX,
-		                p0.centerY,
-		                p0.centerZ,
-		                15.0f
-		        );
+		NavMeshPolygon p0 = lorenciaNavMesh.getPolygon(0);
 
-		NpcItem npc2 =
-		        npcManager.spawnNpc(
-		                2,
-		                p500.centerX,
-		                p500.centerY,
-		                p500.centerZ,
-		                30.0f
-		        );
-		
-		trace(
-		        "NPCs registrados: "
-		                + npcManager.getNpcCount()
-		);
-		
+		NavMeshPolygon p500 = lorenciaNavMesh.getPolygon(500);
 
+		NpcItem npc1 = npcManager.spawnNpc(1, 181.5f, 5.99507f, 141.5f, 15.0f);
 
-        int period = 100; // Intervalo de 100 milissegundos
+		NpcItem npc2 = npcManager.spawnNpc(2, 141.5f, 5.99507f, 131.5f, 30.0f);
 
-     // No SFS3 com Java Puro, você pode usar referências de método diretas (::)
-        // O try/catch encapsulado garante que exceções internas no update não quebrem o loop definitivo
-        this.npcTaskHandle = sfs.getTaskScheduler().scheduleAtFixedRate(
-            () -> {
-                try {
-                    npcManager.update();
-                } catch (Exception e) {
-                    trace("Erro crítico no loop do NpcManager: " + e.getMessage());
-                }
-            }, 
-            5000, // Delay inicial de 5 segundos antes do primeiro
-            period, 
-            TimeUnit.MILLISECONDS
-        );
-		
-		/*trace("=== INICIANDO TESTE SPATIAL GRID ===");
+		int period = 100; // Intervalo de 100 milissegundos
 
-		NavMeshPolygon polygon0 =
-				lorenciaNavMesh.getPolygon(0);
+		// No SFS3 com Java Puro, você pode usar referências de método diretas (::)
+		// O try/catch encapsulado garante que exceções internas no update não quebrem o
+		// loop definitivo
+		this.npcTaskHandle = sfs.getTaskScheduler().scheduleAtFixedRate(() -> {
+			try {
 
-		NavMeshPolygon polygon500 =
-				lorenciaNavMesh.getPolygon(500);
+				npcManager.update();
+				
+			} catch (Exception e) {
 
-		trace("Polygon 0: " + polygon0);
-		trace("Polygon 500: " + polygon500);
+				trace("Erro crítico no loop do NpcManager: " + e.getMessage());
+			}
+		}, 5000, // Delay inicial de 5 segundos antes do primeiro
+				period, TimeUnit.MILLISECONDS);
 
-		NavMeshPolygon start =
-				lorenciaNavMesh.findContainingPolygon(
-		                polygon0.centerX + 1.0f,
-		                polygon0.centerY,
-		                polygon0.centerZ + 1.0f
-		        );
-
-		trace(
-		        "Start encontrado: "
-		                + (start != null
-		                ? start.id
-		                : "NULL")
-		);
-
-		NavMeshPolygon target =
-				lorenciaNavMesh.findContainingPolygon(
-		                polygon500.centerX + 1.0f,
-		                polygon500.centerY,
-		                polygon500.centerZ + 1.0f
-		        );
-
-		trace(
-		        "Target encontrado: "
-		                + (target != null
-		                ? target.id
-		                : "NULL")
-		);
-
-		trace("=== FIM TESTE SPATIAL GRID ===");*/
-
+		/*
+		 * trace("=== INICIANDO TESTE SPATIAL GRID ===");
+		 * 
+		 * NavMeshPolygon polygon0 = lorenciaNavMesh.getPolygon(0);
+		 * 
+		 * NavMeshPolygon polygon500 = lorenciaNavMesh.getPolygon(500);
+		 * 
+		 * trace("Polygon 0: " + polygon0); trace("Polygon 500: " + polygon500);
+		 * 
+		 * NavMeshPolygon start = lorenciaNavMesh.findContainingPolygon(
+		 * polygon0.centerX + 1.0f, polygon0.centerY, polygon0.centerZ + 1.0f );
+		 * 
+		 * trace( "Start encontrado: " + (start != null ? start.id : "NULL") );
+		 * 
+		 * NavMeshPolygon target = lorenciaNavMesh.findContainingPolygon(
+		 * polygon500.centerX + 1.0f, polygon500.centerY, polygon500.centerZ + 1.0f );
+		 * 
+		 * trace( "Target encontrado: " + (target != null ? target.id : "NULL") );
+		 * 
+		 * trace("=== FIM TESTE SPATIAL GRID ===");
+		 */
 
 		suac = new SignUpAssistantComponent();
 
@@ -246,83 +185,65 @@ public class SIDOExtension extends SFSExtension {
 		addEventHandler(SFSEventType.USER_LOGIN, OnLogin.class);
 		addEventHandler(SFSEventType.USER_JOIN_ZONE, OnZoneJoin.class);
 		addEventHandler(SFSEventType.USER_JOIN_ROOM, UserJoinRoomHandler.class);
+		addEventHandler(SFSEventType.USER_VARIABLES_UPDATE, UserVariableUpdate.class);
+		addEventHandler(SFSEventType.USER_DISCONNECT, UserDisconnectHandler.class);
 
 	}
 
-	   public MapManager getMapManager() {
-	        return mapManager;
-	    }
-	   
-	   private NpcItem createTestNpc(
-		        Room targetRoom,
-		        ServerNavMesh navMesh) {
+	public MapManager getMapManager() {
+		return mapManager;
+	}
 
-		    float x = -238.8f;
-		    float y = 17.3999f;
-		    float z = 17.2f;
+	private NpcItem createTestNpc(Room targetRoom, ServerNavMesh navMesh) {
 
-		    NpcItem npc =
-		            new NpcItem(
-		                    1,
-		                    x,
-		                    y,
-		                    z,
-		                    15.0f
-		            );
+		float x = -238.8f;
+		float y = 17.3999f;
+		float z = 17.2f;
 
-		    NavMeshPolygon polygon =
-		            navMesh.findContainingPolygon(
-		                    x,
-		                    y,
-		                    z
-		            );
+		NpcItem npc = new NpcItem(1, x, y, z, 15.0f);
 
-		    if (polygon == null) {
+		NavMeshPolygon polygon = navMesh.findContainingPolygon(x, y, z);
 
-		        trace(
-		                "NPC não está sobre o NavMesh."
-		        );
+		if (polygon == null) {
 
-		        return null;
-		    }
+			trace("NPC não está sobre o NavMesh.");
 
-		    npc.setCurrentPolygonId(
-		            polygon.id
-		    );
-
-		    SmartFoxServer
-		            .getInstance()
-		            .getAPIManager()
-		            .getMMOApi()
-		            .setMMOItemPosition(
-		                    npc,
-		                    new Vec3D(x, y, z),
-		                    targetRoom
-		            );
-
-		    trace(
-		            "NPC criado."
-		                    + " MMOItem ID: "
-		                    + npc.getId()
-		                    + " Polygon: "
-		                    + polygon.id
-		                    + " Range: "
-		                    + npc.getDetectionRange()
-		    );
-
-		    return npc;
+			return null;
 		}
+
+		npc.setCurrentPolygonId(polygon.id);
+
+		SmartFoxServer.getInstance().getAPIManager().getMMOApi().setMMOItemPosition(npc, new Vec3D(x, y, z),
+				targetRoom);
+
+		trace("NPC criado." + " MMOItem ID: " + npc.getId() + " Polygon: " + polygon.id + " Range: "
+				+ npc.getDetectionRange());
+
+		return npc;
+	}
+
+	public CharacterManager getCharacterManager() {
+		return characterManager;
+	}
+	public NpcManager getNpcrManager() {
+		return npcManager;
+	}
+
+	public ServerNavMesh getNavMesh() {
+		return lorenciaNavMesh;
+	}
 
 	@Override
 	public void destroy() {
-		
-		 // Interrompe e limpa o agendamento no encerramento ou reload da extensão
-        if (npcTaskHandle != null && !npcTaskHandle.isCancelled()) {
-            // O parâmetro 'true' força a interrupção se a tarefa estiver rodando no exato momento
-            npcTaskHandle.cancel(true);
-            trace("Loop de NPCs finalizado com sucesso.");
-        }
-        
+
+		// Interrompe e limpa o agendamento no encerramento ou reload da extensão
+		if (npcTaskHandle != null && !npcTaskHandle.isCancelled()) {
+			// O parâmetro 'true' força a interrupção se a tarefa estiver rodando no exato
+			// momento
+			npcTaskHandle.cancel(true);
+			trace("Loop de NPCs finalizado com sucesso.");
+		}
+
 		super.destroy();
 	}
 

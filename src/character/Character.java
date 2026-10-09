@@ -2,6 +2,27 @@ package character;
 
 import com.smartfoxserver.entities.User;
 
+/**
+ * Representa a base de um personagem do jogo.
+ *
+ * Esta classe é abstrata e centraliza os atributos e comportamentos comuns
+ * a todos os tipos de personagem do sistema, como identidade, posição no
+ * mundo e navegação.
+ *
+ * Cada personagem possui:
+ * - um identificador único;
+ * - um usuário associado ao SmartFoxServer;
+ * - um nome;
+ * - coordenadas de posição no mapa (x, y, z);
+ * - o identificador do polígono atual em que se encontra.
+ *
+ * Classes especializadas, como Warrior, Mage e Archer, devem herdar desta
+ * classe e adicionar comportamentos específicos de cada tipo de personagem.
+ *
+ * @author Paulo Dubaum
+ * @since 1.0
+ */
+
 public abstract class Character {
 
     // =========================================================
@@ -12,7 +33,21 @@ public abstract class Character {
     private final User user;
 
     private String name;
-
+    
+    // =========================================================
+    // STATS
+    // =========================================================
+    
+    private int cclassId;
+	private int level;
+    private int experience;
+    private int health;
+    private int mana;
+    private int strength;
+    private int dexterity;
+    private int intelligence;
+    private int resourcePoints;
+    
     // =========================================================
     // WORLD POSITION
     // =========================================================
@@ -135,4 +170,77 @@ public abstract class Character {
                 + currentPolygonId
                 + '}';
     }
+    
+    public int getCclassId() {
+		return cclassId;
+	}
+
+	public void setCclassId(int cclassId) {
+		this.cclassId = cclassId;
+	}
+
+	public int getLevel() {
+		return level;
+	}
+
+	public void setLevel(int level) {
+		this.level = level;
+	}
+
+	public int getExperience() {
+		return experience;
+	}
+
+	public void setExperience(int experience) {
+		this.experience = experience;
+	}
+
+	public int getHealth() {
+		return health;
+	}
+
+	public void setHealth(int health) {
+		this.health = health;
+	}
+
+	public int getMana() {
+		return mana;
+	}
+
+	public void setMana(int mana) {
+		this.mana = mana;
+	}
+
+	public int getStrength() {
+		return strength;
+	}
+
+	public void setStrength(int strength) {
+		this.strength = strength;
+	}
+
+	public int getDexterity() {
+		return dexterity;
+	}
+
+	public void setDexterity(int dexterity) {
+		this.dexterity = dexterity;
+	}
+
+	public int getIntelligence() {
+		return intelligence;
+	}
+
+	public void setIntelligence(int intelligence) {
+		this.intelligence = intelligence;
+	}
+
+	public int getResourcePoints() {
+		return resourcePoints;
+	}
+
+	public void setResourcePoints(int resourcePoints) {
+		this.resourcePoints = resourcePoints;
+	}
+
 }

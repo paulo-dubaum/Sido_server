@@ -1,25 +1,40 @@
 package server;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.smartfoxserver.core.ISFSEvent;
 import com.smartfoxserver.core.SFSEventParam;
-import com.smartfoxserver.db.IDBManager;
 import com.smartfoxserver.entities.User;
-import com.smartfoxserver.entities.data.ISFSArray;
-import com.smartfoxserver.entities.variables.SFSUserVariable;
-import com.smartfoxserver.entities.variables.UserVariable;
 import com.smartfoxserver.exceptions.SFSException;
 import com.smartfoxserver.extensions.BaseServerEventHandler;
 
-import utils.PlayerSession;
+import character.CharacterManager;
+import character.Warrior;
 
 public class UserJoinRoomHandler extends BaseServerEventHandler {
 
 	@Override
-    public void handleServerEvent(ISFSEvent event) throws SFSException {
-		
+	public void handleServerEvent(ISFSEvent event) throws SFSException {
+
+		// 1. Recupera o usuário que acabou de entra em Sido com sucesso
+		User user = (User) event.getParameter(SFSEventParam.USER);
+
+		CharacterManager characterManager = ((SidoExtension) getParentExtension()).getCharacterManager();
+
+		if (!characterManager.hasCharacter(user)) {
+
+			Warrior warrior = new Warrior(1001L, user, "TestWarrior", 0.0f, 0.0f, 0.0f);
+
+			characterManager.registerCharacter(warrior);
+
+		}
+
+		character.Character found = characterManager.getByUser(user);
+
+		character.Character character = characterManager.getByUser(user);
+
+		character.setPosition(0.0f, 0.0f, 0.0f);
+
+		trace("Character encontrado: " + found);
+
 		/*
 		 * User user = (User) event.getParameter(SFSEventParam.USER);
 		 * 
@@ -60,5 +75,5 @@ public class UserJoinRoomHandler extends BaseServerEventHandler {
 		 * getApi().setUserVariables(user, userVariables);
 		 */
 	}
-	
+
 }

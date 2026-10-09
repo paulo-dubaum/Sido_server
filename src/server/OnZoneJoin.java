@@ -1,15 +1,9 @@
 package server;
 
-import java.sql.SQLException;
-
 import com.smartfoxserver.core.ISFSEvent;
 import com.smartfoxserver.core.SFSEventParam;
-import com.smartfoxserver.db.IDBManager;
 import com.smartfoxserver.entities.Room;
 import com.smartfoxserver.entities.User;
-import com.smartfoxserver.entities.data.ISFSArray;
-import com.smartfoxserver.entities.data.ISFSObject;
-import com.smartfoxserver.entities.data.SFSObject;
 import com.smartfoxserver.exceptions.SFSException;
 import com.smartfoxserver.extensions.BaseServerEventHandler;
 
@@ -20,9 +14,12 @@ public class OnZoneJoin extends BaseServerEventHandler {
         // 1. Recupera o usuário que acabou de logar com sucesso
         User user = (User) event.getParameter(SFSEventParam.USER);
         
-        // 2. Busca a sala "charSelection" na Zone atual
-        Room targetRoom = getParentExtension().getParentZone().getRoomByName("CharSelection");
         
+        // 2. Busca a sala "charSelection" na Zone atual
+        //Room targetRoom = getParentExtension().getParentZone().getRoomByName("CharSelection");
+        Room targetRoom = getParentExtension().getParentZone().getRoomByName("Norencia");
+       
+        /*
         // 3. Recupera o gerenciador do banco de dados
         IDBManager dbManager = getParentExtension().getParentZone().getDBManager();
         
@@ -53,10 +50,11 @@ public class OnZoneJoin extends BaseServerEventHandler {
             ISFSObject errorData = new SFSObject();
             errorData.putBool("success", false);
             send("loadCharactersError", errorData, user);
-        }
+        } */
         
+  
         // 6. Joga o usuário para dentro da sala de seleção
-        getApi().joinRoom(user, targetRoom);
+        //getApi().joinRoom(user, targetRoom);
             
     }
 }

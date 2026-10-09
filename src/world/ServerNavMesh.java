@@ -1,10 +1,12 @@
 package world;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import navmesh.NavMeshPolygon;
+import navmesh.NavMeshPortal;
 import navmesh.NavMeshSpatialGrid;
 import navmesh.NavMeshVertex;
 
@@ -43,10 +45,20 @@ public class ServerNavMesh {
     }
 
     public NavMeshVertex getVertex(int id) {
+
+        if (id < 0 || id >= vertices.size()) {
+            return null;
+        }
+
         return vertices.get(id);
     }
 
     public NavMeshPolygon getPolygon(int id) {
+
+        if (id < 0 || id >= polygons.size()) {
+            return null;
+        }
+
         return polygons.get(id);
     }
 
@@ -77,10 +89,10 @@ public class ServerNavMesh {
                         z
                 );
 
-        System.out.println(
+        /*System.out.println(
                 "SpatialGrid candidates: "
                         + candidates.size()
-        );
+        );*/
 
         for (NavMeshPolygon polygon : candidates) {
 
@@ -252,6 +264,147 @@ public class ServerNavMesh {
                 a.y * w +
                 b.y * u +
                 c.y * v;
+    }
+    
+    public NavMeshPortal findPortal(
+            int polygonAId,
+            int polygonBId) {
+
+        NavMeshPolygon polygonA =
+                getPolygon(polygonAId);
+
+        NavMeshPolygon polygonB =
+                getPolygon(polygonBId);
+
+        if (polygonA == null || polygonB == null) {
+            return null;
+        }
+
+        int[] verticesA = {
+                polygonA.vertexA,
+                polygonA.vertexB,
+                polygonA.vertexC
+        };
+
+        int[] verticesB = {
+                polygonB.vertexA,
+                polygonB.vertexB,
+                polygonB.vertexC
+        };
+
+        int firstShared = -1;
+        int secondShared = -1;
+
+        for (int vertexA : verticesA) {
+
+            for (int vertexB : verticesB) {
+
+                if (vertexA != vertexB) {
+                    continue;
+                }
+
+                if (firstShared == -1) {
+
+                    firstShared = vertexA;
+
+                } else if (vertexA != firstShared) {
+
+                    secondShared = vertexA;
+                }
+            }
+        }
+
+        if (firstShared == -1
+                || secondShared == -1) {
+
+            return null;
+        }
+
+        NavMeshVertex portalA =
+                getVertex(firstShared);
+
+        NavMeshVertex portalB =
+                getVertex(secondShared);
+
+        // Direção do corredor A -> B
+        float directionX =
+                polygonB.centerX - polygonA.centerX;
+
+        float directionZ =
+                polygonB.centerZ - polygonA.centerZ;
+
+        // Posição de A em relação ao centro
+        // do primeiro polígono.
+        float pointX =
+                portalA.x - polygonA.centerX;
+
+        float pointZ =
+                portalA.z - polygonA.centerZ;
+
+        float cross =
+                directionX * pointZ
+                - directionZ * pointX;
+
+        if (cross > 0.0f) {
+
+            return new NavMeshPortal(
+                    portalA,
+                    portalB
+            );
+
+        } else {
+
+            return new NavMeshPortal(
+                    portalB,
+                    portalA
+            );
+        }
+    }
+    
+    public List<NavMeshPortal> buildPortals(
+            List<Integer> polygonPath) {
+
+        List<NavMeshPortal> portals =
+                new ArrayList<>();
+
+        if (polygonPath == null
+                || polygonPath.size() < 2) {
+
+            return portals;
+        }
+
+        for (int i = 0;
+             i < polygonPath.size() - 1;
+             i++) {
+
+            int polygonA =
+                    polygonPath.get(i);
+
+            int polygonB =
+                    polygonPath.get(i + 1);
+
+            NavMeshPortal portal =
+                    findPortal(
+                            polygonA,
+                            polygonB
+                    );
+
+            if (portal == null) {
+
+                System.out.println(
+                        "Portal não encontrado: "
+                                + polygonA
+                                + " -> "
+                                + polygonB
+                );
+
+                continue;
+            }
+
+            portals.add(portal);
+        }
+
+        return portals;
     }
 }
 

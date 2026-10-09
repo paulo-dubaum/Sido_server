@@ -1,23 +1,17 @@
 package server;
 
 import java.security.MessageDigest;
-import java.sql.SQLException;
 
 import com.smartfoxserver.core.ISFSEvent;
-import com.smartfoxserver.core.SFSEventParam;
-import com.smartfoxserver.db.IDBManager;
-import com.smartfoxserver.entities.data.ISFSArray;
-import com.smartfoxserver.entities.data.ISFSObject;
-import com.smartfoxserver.exceptions.SFSErrorCode;
-import com.smartfoxserver.exceptions.SFSErrorData;
 import com.smartfoxserver.exceptions.SFSException;
-import com.smartfoxserver.exceptions.SFSLoginException;
 import com.smartfoxserver.extensions.BaseServerEventHandler;
 
 public class OnLogin extends BaseServerEventHandler {
 
 	@Override
 	public void handleServerEvent(ISFSEvent event) throws SFSException {
+		
+		/*
 		// 1. Extrai os parâmetros enviados pelo cliente
 		String username = (String) event.getParameter(SFSEventParam.LOGIN_NAME);
 		String clearPasswordFromClient = (String) event.getParameter(SFSEventParam.LOGIN_PASSWORD);
@@ -55,6 +49,8 @@ public class OnLogin extends BaseServerEventHandler {
 			trace("Erro de banco: " + e.getMessage());
 			throw new SFSLoginException("Erro interno no servidor.", new SFSErrorData(SFSErrorCode.GENERIC_ERROR));
 		}
+		
+		*/
 	}
 
 	private String convertToSHA256(String base) {

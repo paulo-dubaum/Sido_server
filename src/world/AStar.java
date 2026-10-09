@@ -32,6 +32,8 @@ public class AStar {
 
         NavMeshPolygon target =
                 navMesh.getPolygon(targetPolygonId);
+        
+        
 
         if (start == null) {
 
