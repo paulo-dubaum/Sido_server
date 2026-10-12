@@ -22,6 +22,8 @@ import com.smartfoxserver.mmo.Vec3D;
 import character.CharacterManager;
 import navmesh.NavMeshLoader;
 import navmesh.NavMeshPolygon;
+import npc.NpcData;
+import npc.NpcDatabase;
 import npc.NpcItem;
 import npc.NpcManager;
 import world.MapManager;
@@ -29,6 +31,7 @@ import world.ServerNavMesh;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class SidoExtension extends SFSExtension {
 
@@ -57,18 +60,78 @@ public class SidoExtension extends SFSExtension {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+		
+		// Envia uma mensagem para o log do servidor ao iniciar
+				trace("Os mapas foram carregados com sucesso!");
+				
+				MMORoom room = (MMORoom) getParentZone().getRoomByName("Norencia");
 
-		MMORoom room = (MMORoom) getParentZone().getRoomByName("Norencia");
+				characterManager = new CharacterManager();
+				mapManager = new MapManager();
 
-		characterManager = new CharacterManager();
-		mapManager = new MapManager();
+				npcManager =
+				        new NpcManager(
+				                room,
+				                lorenciaNavMesh,
+				                characterManager
+				        );
+		
 
-		npcManager =
-		        new NpcManager(
-		                room,
-		                lorenciaNavMesh,
-		                characterManager
-		        );
+		// Dentro de um método de inicialização:
+		try {
+		    NpcDatabase database = new NpcDatabase(
+		        Paths.get("data/config/npcs.json")
+		    );
+
+		    trace("NPCs carregados: " + database.size());
+
+		    NpcData data = database.getNpc(0);
+
+		    int npcId = 1;
+
+		    for (int i = 148; i < 151; i++) {
+
+		        for (int j = 130; j < 133; j++) {
+
+		            NpcItem npc = new NpcItem(
+		                data,
+		                npcId++,
+		                (float) i,
+		                5.99507f,
+		                (float) j
+		            );
+
+		            NpcItem registeredNpc = npcManager.spawnNpc(npc);
+
+		            if (registeredNpc != null) {
+		                System.out.printf(
+		                    "NPC ID=%d Type=%d Radius=%.3f Speed=%.2f%n",
+		                    npc.getId(),
+		                    npc.getNpcTypeId(),
+		                    npc.getAgentRadius(),
+		                    npc.getMovementSpeed()
+		                );
+		            }
+		        }
+		    }
+		    
+
+		    /*if (npcTeste != null) {
+		        trace("NPC: " + npcTeste.getNpcName());
+		        trace("Velocidade: " + npcTeste.getMovementSpeed());
+		        trace("Raio: " + npcTeste.getAgentRadius());
+		    } else {
+		        trace("npcTeste (tipo 0) nao encontrado.");
+		    }*/
+
+		} catch (Exception e) {
+		    trace("Erro ao carregar NPCs: " + e.getMessage());
+		}
+		
+		// Envia uma mensagem para o log do servidor ao iniciar
+		trace("Os npcs foram carregados com sucesso!");
+
+		
 
 		/*
 		 * try {
@@ -87,7 +150,7 @@ public class SidoExtension extends SFSExtension {
 		 * throw new RuntimeException(e); }
 		 */
 
-		NpcItem npcTest = npcManager.spawnNpc(1, // npcTypeId
+		/*NpcItem npcTest = npcManager.spawnNpc(1, // npcTypeId
 				-238.8f, // X
 				17.3999f, // Y
 				17.2f, // Z
@@ -99,15 +162,30 @@ public class SidoExtension extends SFSExtension {
 			trace("NPC TEST criado." + " ID=" + npcTest.getId());
 
 			trace("NPCs registrados: " + npcManager.getNpcCount());
-		}
+		}*/
 
 		NavMeshPolygon p0 = lorenciaNavMesh.getPolygon(0);
 
 		NavMeshPolygon p500 = lorenciaNavMesh.getPolygon(500);
+		
+		/*for(int i = 190; i < 210; i++) {
+			
+			for(int j = 141; j < 160; j++) {
+				
+				NpcItem npc1 = npcManager.spawnNpc(1, 1, (float)i, 5.99507f, (float)j, 15.0f);
+				
+			}
+			
+		}
+		
+		for(int i = 141; i < 181; i++) {
+			
+			NpcItem npc1 = npcManager.spawnNpc(1, 1, (float)i, 5.99507f, 141.5f, 15.0f);
+			
+		}*/
 
-		NpcItem npc1 = npcManager.spawnNpc(1, 181.5f, 5.99507f, 141.5f, 15.0f);
 
-		NpcItem npc2 = npcManager.spawnNpc(2, 141.5f, 5.99507f, 131.5f, 30.0f);
+		//NpcItem npc2 = npcManager.spawnNpc(1, 2, 141.5f, 5.99507f, 131.5f, 30.0f);
 
 		int period = 100; // Intervalo de 100 milissegundos
 
@@ -115,6 +193,7 @@ public class SidoExtension extends SFSExtension {
 		// O try/catch encapsulado garante que exceções internas no update não quebrem o
 		// loop definitivo
 		this.npcTaskHandle = sfs.getTaskScheduler().scheduleAtFixedRate(() -> {
+			
 			try {
 
 				npcManager.update();
@@ -126,27 +205,6 @@ public class SidoExtension extends SFSExtension {
 		}, 5000, // Delay inicial de 5 segundos antes do primeiro
 				period, TimeUnit.MILLISECONDS);
 
-		/*
-		 * trace("=== INICIANDO TESTE SPATIAL GRID ===");
-		 * 
-		 * NavMeshPolygon polygon0 = lorenciaNavMesh.getPolygon(0);
-		 * 
-		 * NavMeshPolygon polygon500 = lorenciaNavMesh.getPolygon(500);
-		 * 
-		 * trace("Polygon 0: " + polygon0); trace("Polygon 500: " + polygon500);
-		 * 
-		 * NavMeshPolygon start = lorenciaNavMesh.findContainingPolygon(
-		 * polygon0.centerX + 1.0f, polygon0.centerY, polygon0.centerZ + 1.0f );
-		 * 
-		 * trace( "Start encontrado: " + (start != null ? start.id : "NULL") );
-		 * 
-		 * NavMeshPolygon target = lorenciaNavMesh.findContainingPolygon(
-		 * polygon500.centerX + 1.0f, polygon500.centerY, polygon500.centerZ + 1.0f );
-		 * 
-		 * trace( "Target encontrado: " + (target != null ? target.id : "NULL") );
-		 * 
-		 * trace("=== FIM TESTE SPATIAL GRID ===");
-		 */
 
 		suac = new SignUpAssistantComponent();
 
@@ -194,7 +252,7 @@ public class SidoExtension extends SFSExtension {
 		return mapManager;
 	}
 
-	private NpcItem createTestNpc(Room targetRoom, ServerNavMesh navMesh) {
+	/*private NpcItem createTestNpc(Room targetRoom, ServerNavMesh navMesh) {
 
 		float x = -238.8f;
 		float y = 17.3999f;
@@ -220,7 +278,7 @@ public class SidoExtension extends SFSExtension {
 				+ npc.getDetectionRange());
 
 		return npc;
-	}
+	}*/
 
 	public CharacterManager getCharacterManager() {
 		return characterManager;

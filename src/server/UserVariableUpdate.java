@@ -70,6 +70,11 @@ public class UserVariableUpdate extends BaseServerEventHandler {
                         z
                 );
 
+        System.out.printf(
+        	    "CHAR POSITION id=%d x=%.3f z=%.3f%n",
+        	    character.getCharacterId(), x, z
+        	);
+        
         if (polygon != null) {
 
             character.setCurrentPolygonId(polygon.id);
