@@ -147,6 +147,26 @@ public class NpcManager {
     private final CharacterManager characterManager;
     private final Map<Integer, NpcItem> npcs = new HashMap<>();
 
+    // Sincronizacao: simula a cada tick, transmite movimento a cada 2 ticks.
+    private static final int MOVEMENT_SYNC_TICKS = 2;
+    private static final float NETWORK_POSITION_EPSILON_SQ = 0.0001f;
+    private final Map<Integer, PendingSync> pendingSync = new HashMap<>();
+    private final Map<Integer, Integer> yieldSequences = new HashMap<>();
+    private long networkMovementSent, networkMovementDeferred, networkMovementSkipped, networkYieldSignals;
+    private long networkStopSignals, networkVelocitySnapshots;
+    private long networkStopPayloadFieldsSaved;
+    private static final class PendingSync {
+        float x, y, z;
+        Float rotation;
+        boolean dirty;
+        boolean sentBefore;
+        float sentX, sentY, sentZ;
+        float sentVx, sentVz;
+        int moveSeq;
+        long lastSentNs;
+        PendingSync(float x, float y, float z) { this.x=x; this.y=y; this.z=z; }
+    }
+
     private long tickCount;
     private long lastUpdateTimeNs;
 
@@ -205,6 +225,11 @@ public class NpcManager {
             );
 
         npcs.put(npc.getId(), npc);
+        PendingSync initialSync = new PendingSync(npc.getX(), npc.getY(), npc.getZ());
+        initialSync.sentBefore = true;
+        initialSync.sentX = npc.getX(); initialSync.sentY = npc.getY(); initialSync.sentZ = npc.getZ();
+        initialSync.lastSentNs = System.nanoTime();
+        pendingSync.put(npc.getId(), initialSync);
 
         System.out.printf(
             "NPC registrado: ID=%d Type=%d Radius=%.3f Speed=%.2f%n",
@@ -224,6 +249,8 @@ public class NpcManager {
         ignoredUntilExit.remove(mmoItemId);
         lastBumpTick.remove(mmoItemId);
         chaseProgress.remove(mmoItemId);
+        pendingSync.remove(mmoItemId);
+        yieldSequences.remove(mmoItemId);
         if (attackSlotOverrides.remove(mmoItemId) != null) fixedSlotReleased++;
         if (npc == null) {
             return false;
@@ -304,6 +331,7 @@ public class NpcManager {
         long separationStartNs = System.nanoTime();
         resolveNpcOverlaps();
         separationNs += System.nanoTime() - separationStartNs;
+        flushMovementSync();
 
         long updateNs = System.nanoTime() - startNs;
         totalUpdateNs += updateNs;
@@ -1256,7 +1284,10 @@ public class NpcManager {
                 intentAccepted++;
                 bumpAccepted++;
                 bumpProgressive++;
-                if (isTactical(blocker)) intelligentYields++;
+                if (isTactical(blocker)) {
+                    intelligentYields++;
+                    signalIntelligentYield(blocker);
+                }
                 pendingBumpChasers.put(chaser.getId(), (int)tickCount);
                 bumpChaserDistances.put(chaser.getId(), distanceSquaredXZ(chaser.getX(),
                         chaser.getZ(), chaser.getTarget().getX(), chaser.getTarget().getZ()));
@@ -1563,27 +1594,105 @@ public class NpcManager {
     // ---------------------------------------------------------------------
 
     private void syncNpcPosition(NpcItem npc, float x, float y, float z) {
-        // Usado ao concluir RETURNING; não altera a rotação atual do NPC.
         syncNpcPosition(npc, x, y, z, null);
     }
 
+    /** Apenas registra a ultima posicao; o servidor ja aplicou o movimento. */
     private void syncNpcPosition(NpcItem npc, float x, float y, float z, Float rotationY) {
-        long t0 = System.nanoTime();
-        try {
-            SmartFoxServer.getInstance().getAPIManager().getMMOApi()
-                    .setMMOItemPosition(npc, new Vec3D(x, y, z), room);
-        } finally {
-            recordSpatial(System.nanoTime() - t0);
+        PendingSync pending = pendingSync.get(npc.getId());
+        if (pending == null) {
+            pending = new PendingSync(x, y, z);
+            pendingSync.put(npc.getId(), pending);
         }
-        // Uma única atualização de variáveis para x/y/z/rot durante movimento.
-        List<IMMOItemVariable> variables = new ArrayList<>(4);
-        variables.add(new MMOItemVariable("x", x));
-        variables.add(new MMOItemVariable("y", y));
-        variables.add(new MMOItemVariable("z", z));
-        if (rotationY != null) {
-            variables.add(new MMOItemVariable("rot", rotationY));
+        pending.x = x; pending.y = y; pending.z = z;
+        if (rotationY != null) pending.rotation = rotationY;
+        pending.dirty = true;
+    }
+
+    /**
+     * Variavel NOVA: yieldSeq (inteiro crescente por NPC inteligente).
+     * E um evento de animacao, nunca um comando de movimento do cliente.
+     * Envia imediatamente para nao perder eventos entre sincronizacoes.
+     */
+    private void signalIntelligentYield(NpcItem npc) {
+        int sequence = yieldSequences.getOrDefault(npc.getId(), 0) + 1;
+        yieldSequences.put(npc.getId(), sequence);
+        setNpcVariables(npc, Arrays.asList(new MMOItemVariable("yieldSeq", sequence)), SyncKind.ATTACK);
+        networkYieldSignals++;
+    }
+
+    /**
+     * Snapshot autoritativo: velocidade media do deslocamento REAL entre snapshots.
+     * Nunca usa a direcao desejada do waypoint como velocidade.
+     * Em parada, transmite vx=vz=0 uma unica vez para impedir extrapolacao infinita.
+     */
+    private void flushMovementSync() {
+        if (tickCount % MOVEMENT_SYNC_TICKS != 0) {
+            for (PendingSync p : pendingSync.values()) if (p.dirty) networkMovementDeferred++;
+            return;
         }
-        setNpcVariables(npc, variables, SyncKind.MOVEMENT);
+        long nowNs = System.nanoTime();
+        for (Map.Entry<Integer, PendingSync> entry : pendingSync.entrySet()) {
+            PendingSync p = entry.getValue();
+            NpcItem npc = npcs.get(entry.getKey());
+            if (npc == null) continue;
+
+            boolean changed = p.dirty && (!p.sentBefore
+                    || distanceSquaredXZ(p.x, p.z, p.sentX, p.sentZ) >= NETWORK_POSITION_EPSILON_SQ
+                    || Math.abs(p.y - p.sentY) >= 0.01f);
+            boolean mustStop = !changed && (Math.abs(p.sentVx) > 0.0001f
+                    || Math.abs(p.sentVz) > 0.0001f);
+            if (!changed && !mustStop) {
+                if (p.dirty) networkMovementSkipped++;
+                p.dirty = false;
+                continue;
+            }
+
+            float vx = 0f, vz = 0f;
+            if (changed && p.sentBefore) {
+                float elapsed = (nowNs - p.lastSentNs) / 1_000_000_000.0f;
+                if (elapsed > 0.001f) {
+                    vx = (p.x - p.sentX) / elapsed;
+                    vz = (p.z - p.sentZ) / elapsed;
+                }
+            }
+            // Uma parada nao exige atualizar a posicao espacial se ela nao mudou.
+            if (changed) {
+                long t0 = System.nanoTime();
+                try {
+                    SmartFoxServer.getInstance().getAPIManager().getMMOApi()
+                            .setMMOItemPosition(npc, new Vec3D(p.x, p.y, p.z), room);
+                } finally {
+                    recordSpatial(System.nanoTime() - t0);
+                }
+            }
+            // Em parada, as coordenadas autoritativas ja foram publicadas.
+            // Nao as retransmite: o cliente conserva os valores anteriores.
+            List<IMMOItemVariable> variables = new ArrayList<>(changed ? 7 : 3);
+            if (changed) {
+                variables.add(new MMOItemVariable("x", p.x));
+                variables.add(new MMOItemVariable("y", p.y));
+                variables.add(new MMOItemVariable("z", p.z));
+                if (p.rotation != null) variables.add(new MMOItemVariable("rot", p.rotation));
+            } else {
+                networkStopPayloadFieldsSaved += p.rotation == null ? 3 : 4;
+            }
+            variables.add(new MMOItemVariable("vx", vx));
+            variables.add(new MMOItemVariable("vz", vz));
+            // Incrementa somente quando um snapshot sera efetivamente publicado.
+            int nextSeq = p.moveSeq + 1;
+            variables.add(new MMOItemVariable("moveSeq", nextSeq));
+            setNpcVariables(npc, variables, SyncKind.MOVEMENT);
+            p.moveSeq = nextSeq;
+            p.sentX = p.x; p.sentY = p.y; p.sentZ = p.z;
+            p.sentVx = vx; p.sentVz = vz;
+            p.lastSentNs = nowNs;
+            p.sentBefore = true;
+            p.dirty = false;
+            networkMovementSent++;
+            networkVelocitySnapshots++;
+            if (mustStop) networkStopSignals++;
+        }
     }
 
     private enum SyncKind { MOVEMENT, ATTACK }
@@ -1660,6 +1769,12 @@ public class NpcManager {
         printMetric("  Spatial", spatialCalls, spatialNs, maxSpatialNs);
         printMetric("  XYZ+Rot", coordinatesCalls, coordinatesNs, maxCoordinatesNs);
         printMetric("  Attack", attackSyncCalls, attackSyncNs, maxAttackSyncNs);
+        System.out.printf("  Network movementSent=%d deferredTicks=%d skipped=%d yieldSignals=%d%n",
+                networkMovementSent, networkMovementDeferred, networkMovementSkipped, networkYieldSignals);
+        System.out.printf("  Network velocitySnapshots=%d stopSignals=%d stopFieldsSaved=%d%n",
+                networkVelocitySnapshots, networkStopSignals, networkStopPayloadFieldsSaved);
+        networkMovementSent = networkMovementDeferred = networkMovementSkipped = networkYieldSignals = 0;
+        networkVelocitySnapshots = networkStopSignals = networkStopPayloadFieldsSaved = 0;
         System.out.printf("  MoveIntent accepted=%d reservationRejects=%d%n", intentAccepted, intentRejected);
         System.out.printf("  Tactical yieldRequests=%d yieldAccepted=%d yieldRejected=%d orbitStuckRecoveries=%d waitRetargets=%d waitRetargetChecks=%d%n",
                 tacticalYieldRequests, tacticalYieldAccepted, tacticalYieldRejected,
