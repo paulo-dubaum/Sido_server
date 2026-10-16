@@ -23,11 +23,10 @@ public class UserVariableUpdate extends BaseServerEventHandler {
 	@Override
 	public void handleServerEvent(ISFSEvent event) throws SFSException {
 		
-		 // 1. Recupera o usuário que acabou de logar com sucesso
         User user = (User) event.getParameter(SFSEventParam.USER);
         MMORoom room = (MMORoom) getParentExtension()
                 .getParentZone()
-                .getRoomByName("Norencia");
+                .getRoomByName("norencia_001");
         
         float x = user.getVariable("x").getFloatValue();
         float y = user.getVariable("y").getFloatValue();
