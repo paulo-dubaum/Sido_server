@@ -102,6 +102,20 @@ public class NpcManager {
     private long waitRetargets, waitRetargetChecks, orbitStuckRecoveries;
     private static final float STUCK_MIN_MOVEMENT_SQ = 0.08f * 0.08f;
     private final Map<Integer, StuckState> stuckStates = new HashMap<>();
+    // Monitor independente do retorno: progresso real apos aplicar MoveIntents.
+    private static final int RETURN_STUCK_CHECK_TICKS = 10;
+    private static final int RETURN_RETRY_TICKS = 15;
+    private static final float RETURN_PROGRESS_SQ = 0.08f * 0.08f;
+    private final Map<Integer, ReturnProgress> returnProgress = new HashMap<>();
+    private static final class ReturnProgress {
+        float x, z;
+        long lastCheckTick, nextRetryTick;
+        int consecutiveFailures;
+        ReturnProgress(float x, float z, long tick) {
+            this.x = x; this.z = z; this.lastCheckTick = tick;
+        }
+    }
+
     private final Map<Integer, Integer> attackSlotOverrides = new HashMap<>();
     private final Map<Integer, ChaseProgress> chaseProgress = new HashMap<>();
     // Evita reacquisicao imediata do mesmo alvo apos desistir.
@@ -246,6 +260,7 @@ public class NpcManager {
         tacticalDestinations.remove(mmoItemId);
         tacticalNextReposition.remove(mmoItemId);
         stuckStates.remove(mmoItemId);
+        returnProgress.remove(mmoItemId);
         ignoredUntilExit.remove(mmoItemId);
         lastBumpTick.remove(mmoItemId);
         chaseProgress.remove(mmoItemId);
@@ -330,6 +345,7 @@ public class NpcManager {
         }
         long separationStartNs = System.nanoTime();
         resolveNpcOverlaps();
+        checkReturningProgress();
         separationNs += System.nanoTime() - separationStartNs;
         flushMovementSync();
 
@@ -353,6 +369,7 @@ public class NpcManager {
         if (npc.getState() == NpcState.DEAD) {
             releaseAttackSlot(npc);
             stuckStates.remove(npc.getId());
+            returnProgress.remove(npc.getId());
             chaseProgress.remove(npc.getId());
             return;
         }
@@ -545,22 +562,69 @@ public class NpcManager {
         float distanceSquared = distanceSquaredXZ(
                 npc.getX(), npc.getZ(), npc.getSpawnX(), npc.getSpawnZ());
         if (distanceSquared <= SPAWN_ARRIVAL_DISTANCE * SPAWN_ARRIVAL_DISTANCE) {
-            // O snap ao spawn nao pode atravessar um NPC parado.
-            if (isMovementBlockedByNpc(npc, npc.getSpawnX(), npc.getSpawnZ())) {
-                return;
-            }
+            // Valida ocupacao no DESTINO, inclusive quando o passo e zero.
+            if (isSpawnOccupied(npc)) return;
+            NavMeshPolygon spawnPolygon = navMesh.findContainingPolygon(
+                    npc.getSpawnX(), npc.getSpawnY(), npc.getSpawnZ());
+            if (spawnPolygon == null) return;
             npc.setPosition(npc.getSpawnX(), npc.getSpawnY(), npc.getSpawnZ());
+            npc.setCurrentPolygonId(spawnPolygon.id);
             syncNpcPosition(npc, npc.getSpawnX(), npc.getSpawnY(), npc.getSpawnZ());
             npc.clearPath();
+            returnProgress.remove(npc.getId());
             npc.setState(NpcState.IDLE);
             System.out.println("NPC " + npc.getId() + " retornou ao spawn.");
             return;
         }
 
-        if (!npc.hasPath() && !calculateReturnPath(npc)) {
-            return;
+        ReturnProgress progress = returnProgress.computeIfAbsent(npc.getId(),
+                id -> new ReturnProgress(npc.getX(), npc.getZ(), tickCount));
+        if (!npc.hasPath() && tickCount >= progress.nextRetryTick) {
+            if (!calculateReturnPath(npc)) {
+                progress.consecutiveFailures++;
+                progress.nextRetryTick = tickCount + RETURN_RETRY_TICKS;
+                System.out.printf("NPC RETURN NO_PATH id=%d distance=%.3f failures=%d%n",
+                        npc.getId(), Math.sqrt(distanceSquared), progress.consecutiveFailures);
+                return;
+            }
+            progress.consecutiveFailures = 0;
         }
-        moveNpc(npc, deltaTime);
+        if (npc.hasPath()) moveNpc(npc, deltaTime);
+    }
+
+    private boolean isSpawnOccupied(NpcItem npc) {
+        for (NpcItem other : npcs.values()) {
+            if (other == npc || other.getState() == NpcState.DEAD) continue;
+            float radius = collisionRadiusBetween(npc, other);
+            if (distanceSquaredXZ(npc.getSpawnX(), npc.getSpawnZ(),
+                    other.getX(), other.getZ()) < radius * radius) return true;
+        }
+        return false;
+    }
+
+    /** Executado depois dos movimentos e da separacao: mede deslocamento aplicado. */
+    private void checkReturningProgress() {
+        for (NpcItem npc : npcs.values()) {
+            if (npc.getState() != NpcState.RETURNING) continue;
+            ReturnProgress state = returnProgress.computeIfAbsent(npc.getId(),
+                    id -> new ReturnProgress(npc.getX(), npc.getZ(), tickCount));
+            if (tickCount - state.lastCheckTick < RETURN_STUCK_CHECK_TICKS) continue;
+            float displacementSq = distanceSquaredXZ(state.x, state.z, npc.getX(), npc.getZ());
+            state.x = npc.getX(); state.z = npc.getZ(); state.lastCheckTick = tickCount;
+            if (displacementSq >= RETURN_PROGRESS_SQ) {
+                state.consecutiveFailures = 0;
+                continue;
+            }
+            if (tickCount < state.nextRetryTick) continue;
+            float distance = (float)Math.sqrt(distanceSquaredXZ(
+                    npc.getX(), npc.getZ(), npc.getSpawnX(), npc.getSpawnZ()));
+            state.consecutiveFailures++;
+            state.nextRetryTick = tickCount + RETURN_RETRY_TICKS;
+            npc.clearPath();
+            boolean pathFound = calculateReturnPath(npc);
+            System.out.printf("NPC RETURN STUCK id=%d distance=%.3f path=%s occupied=%s failures=%d%n",
+                    npc.getId(), distance, pathFound, isSpawnOccupied(npc), state.consecutiveFailures);
+        }
     }
 
     private void startReturning(NpcItem npc) {
@@ -570,6 +634,7 @@ public class NpcManager {
         releaseAttackSlot(npc);
         tacticalDestinations.remove(npc.getId());
         npc.clearPath();
+        returnProgress.put(npc.getId(), new ReturnProgress(npc.getX(), npc.getZ(), tickCount));
         npc.setState(NpcState.RETURNING);
     }
 
@@ -1164,6 +1229,29 @@ public class NpcManager {
                 else tacticalYieldRejected++;
             }
         }
+        if (!normalMove && npc.getState() == NpcState.RETURNING
+                && tickCount % 20 == 0) {
+
+            boolean blockedByNpc =
+                    isMovementBlockedByNpc(npc, newX, newZ);
+
+            boolean blockedByReservation =
+                    conflictsWithReservedMovement(
+                            npc, startX, startZ, newX, newZ);
+
+            System.out.printf(
+                "NPC RETURN BLOCKED id=%d " +
+                "pos=(%.3f, %.3f) " +
+                "waypoint=(%.3f, %.3f) " +
+                "navMesh=%s collision=%s reservation=%s%n",
+                npc.getId(),
+                startX, startZ,
+                waypoint.x, waypoint.z,
+                polygon != null,
+                blockedByNpc,
+                blockedByReservation
+            );
+        }
         if (!normalMove) {
             // Prefere consistentemente um lado por NPC, reduzindo alternancia por tick.
             int preferredSide = (npc.getId() & 1) == 0 ? 1 : -1;
@@ -1469,6 +1557,20 @@ public class NpcManager {
             float nearestX = fromX + t * stepX;
             float nearestZ = fromZ + t * stepZ;
             if (nearestX * nearestX + nearestZ * nearestZ < limitSquared) {
+            	if (npc.getState() == NpcState.RETURNING
+            	        && tickCount % 20 == 0) {
+            	    System.out.printf(
+            	        "NPC RETURN COLLISION mover=%d blocker=%d " +
+            	        "blockerState=%s blockerPos=(%.3f, %.3f) " +
+            	        "blockerRadius=%.3f%n",
+            	        npc.getId(),
+            	        other.getId(),
+            	        other.getState(),
+            	        other.getX(),
+            	        other.getZ(),
+            	        combinedRadius
+            	    );
+            	}
                 return true;
             }
         }

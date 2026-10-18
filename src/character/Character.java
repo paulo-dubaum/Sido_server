@@ -41,6 +41,8 @@ public abstract class Character {
     private int cclassId;
 	private int level;
     private int experience;
+    private long totalExperience;
+    private int currentAgility;
     private int health;
     private int mana;
     private int strength;
@@ -65,6 +67,16 @@ public abstract class Character {
     // =========================================================
     // CONSTRUCTOR
     // =========================================================
+    
+    // O que precisamos implementar e que cada "raça" vai definir
+    /* Calcular Defesa()
+     * Calcular Ataque Mim e Max()
+     * Calcular Total de Pontos de vida()
+     * Calcular Total de pontos de mana()
+     * Adicionar Stamina
+     * Calcular o level pela experience
+     * 
+     */
 
     protected Character(
             long characterId,
@@ -187,13 +199,30 @@ public abstract class Character {
 		this.level = level;
 	}
 
-	public int getExperience() {
-		return experience;
+	public void setExperience(int experience) {
+	    this.experience = experience;
 	}
 
-	public void setExperience(int experience) {
-		this.experience = experience;
+	public long getTotalExperience() {
+	    return totalExperience;
 	}
+
+	public void setTotalExperience(long totalExperience) {
+	    this.totalExperience = totalExperience;
+	}
+
+    public int getCurrentAgility() { 
+    	return currentAgility; 
+    }
+    
+    public void setCurrentAgility(int value)
+    {
+    	this.currentAgility = value; 
+    }
+    
+    
+    //this.totalExperience = experience;
+	
 
 	public int getHealth() {
 		return health;

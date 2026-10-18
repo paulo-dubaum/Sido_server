@@ -1,9 +1,14 @@
 package server;
 
+import java.sql.SQLException;
+
 import com.smartfoxserver.core.ISFSEvent;
 import com.smartfoxserver.core.SFSEventParam;
-import com.smartfoxserver.entities.Room;
+import com.smartfoxserver.db.IDBManager;
 import com.smartfoxserver.entities.User;
+import com.smartfoxserver.entities.data.ISFSArray;
+import com.smartfoxserver.entities.data.ISFSObject;
+import com.smartfoxserver.entities.data.SFSObject;
 import com.smartfoxserver.exceptions.SFSException;
 import com.smartfoxserver.extensions.BaseServerEventHandler;
 
@@ -11,27 +16,29 @@ public class OnZoneJoin extends BaseServerEventHandler {
 
     @Override
     public void handleServerEvent(ISFSEvent event) throws SFSException {
-        // 1. Recupera o usuário que acabou de logar com sucesso
         User user = (User) event.getParameter(SFSEventParam.USER);
-        
-        
-        // 2. Busca a sala "charSelection" na Zone atual
-        //Room targetRoom = getParentExtension().getParentZone().getRoomByName("CharSelection");
-        Room targetRoom = getParentExtension().getParentZone().getRoomByName("Norencia");
-       
-        /*
-        // 3. Recupera o gerenciador do banco de dados
+        Object storedId = user.getSession().getProperty(OnLogin.DATABASE_USER_ID_KEY);
+
+        if (!(storedId instanceof Number)) {
+            trace("ID persistente ausente na sessao de " + user.getName());
+            ISFSObject errorData = new SFSObject();
+            errorData.putBool("success", false);
+            send("loadCharactersError", errorData, user);
+            return;
+        }
+
+        long databaseUserId = ((Number) storedId).longValue();
+
+        // 2. Recupera o gerenciador do banco de dados
         IDBManager dbManager = getParentExtension().getParentZone().getDBManager();
         
         try {
-            // Consulta os personagens baseando-se no nome do usuário (ou ID do usuário se você tiver)
-            // IMPORTANTE: Altere "user_chars" e "username_coluna" de acordo com o mapeamento exato da sua tabela
-            String sql = "SELECT id, nome, classe, exp, mapa FROM user_chars WHERE username_coluna = ?";
-            
+            String sql = "SELECT id, name, class_id, level, map_id FROM characters WHERE user_id = ?";
+
             // O SFS3 executa a query e já mapeia o resultado do PostgreSQL em um ISFSArray automaticamente
-            ISFSArray charList = dbManager.executeQuery(sql, new Object[] { user.getName() });
+            ISFSArray charList = dbManager.executeQuery(sql, new Object[] { databaseUserId });
             
-            // 4. Cria o objeto de resposta que cruzará a rede até o cliente
+            // 3. Cria o objeto de resposta que cruzará a rede até o cliente
             ISFSObject responseData = new SFSObject();
             
             // Injeta a lista física de personagens dentro do objeto com a chave "characters"
@@ -50,7 +57,7 @@ public class OnZoneJoin extends BaseServerEventHandler {
             ISFSObject errorData = new SFSObject();
             errorData.putBool("success", false);
             send("loadCharactersError", errorData, user);
-        } */
+        } 
         
   
         // 6. Joga o usuário para dentro da sala de seleção

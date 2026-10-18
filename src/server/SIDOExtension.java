@@ -47,6 +47,8 @@ public class SidoExtension extends SFSExtension {
         try {
             mapManager = new MapManager();
             registerHandlers();
+            
+            addRequestHandler("selectchar", CharacterSelectHandler.class);
 
             world.RegionDefinition[] regions = world.RegionConfigLoader.load(
                     Paths.get("data", "config", "regions.json"));
@@ -68,6 +70,17 @@ public class SidoExtension extends SFSExtension {
             trace("Falha ao iniciar SidoExtension: " + e.toString());
             throw new IllegalStateException("Falha ao inicializar a Zone Extension", e);
         }
+    }
+
+    /** Mapa persistido: 0=Norencia, 1=Cordilheira, 2=Deserto, 3=Castelo. */
+    public RoomSimulationContext selectRoomForMap(int mapId) {
+        final String[] regions = {"norencia", "cordilheira", "deserto", "castelo"};
+        if (mapId < 0 || mapId >= regions.length) return null;
+        String prefix = regions[mapId] + "_";
+        for (RoomSimulationContext context : worldRooms.getAll()) {
+            if (context.getRoom().getName().startsWith(prefix)) return context;
+        }
+        return null;
     }
 
     public RoomSimulationContext getRoomContext(int roomId) {
@@ -119,7 +132,7 @@ public class SidoExtension extends SFSExtension {
             }
             for (RoomSimulationContext context : getRoomContexts()) {
                 try {
-                    context.update();
+                    synchronized (context) { context.update(); }
                 } catch (Exception e) {
                     trace("Erro NPC sala " + context.getRoom().getName() + ": " + e.toString());
                     e.printStackTrace();
@@ -139,6 +152,7 @@ public class SidoExtension extends SFSExtension {
         addEventHandler(SFSEventType.USER_LOGIN, OnLogin.class);
         addEventHandler(SFSEventType.USER_JOIN_ZONE, OnZoneJoin.class);
         addEventHandler(SFSEventType.USER_JOIN_ROOM, UserJoinRoomHandler.class);
+        addEventHandler(SFSEventType.USER_LEAVE_ROOM, UserExitRoomHandler.class);
         addEventHandler(SFSEventType.USER_VARIABLES_UPDATE, UserVariableUpdate.class);
         addEventHandler(SFSEventType.USER_DISCONNECT, UserDisconnectHandler.class);
     }

@@ -2,78 +2,86 @@ package server;
 
 import com.smartfoxserver.core.ISFSEvent;
 import com.smartfoxserver.core.SFSEventParam;
+import com.smartfoxserver.entities.Room;
 import com.smartfoxserver.entities.User;
+import com.smartfoxserver.entities.data.ISFSObject;
+import com.smartfoxserver.entities.data.SFSObject;
 import com.smartfoxserver.exceptions.SFSException;
 import com.smartfoxserver.extensions.BaseServerEventHandler;
-
-import character.CharacterManager;
+import character.CharacterData;
 import character.Warrior;
+import character.Archer;
+import character.Mage;
+import character.Character;
+import navmesh.NavMeshPolygon;
 
-public class UserJoinRoomHandler extends BaseServerEventHandler {
+public final class UserJoinRoomHandler extends BaseServerEventHandler {
+    @Override
+    public void handleServerEvent(ISFSEvent event) throws SFSException {
+        User user = (User) event.getParameter(SFSEventParam.USER);
+        Room room = (Room) event.getParameter(SFSEventParam.ROOM);
+        if (user == null || room == null) return;
+        SidoExtension extension = (SidoExtension) getParentExtension();
+        RoomSimulationContext destination = extension.getRoomContext(room.getId());
+        if (destination == null) return;
+        Object pending = user.getSession().getProperty(CharacterSelectHandler.PENDING_CHARACTER_KEY);
+        if (!(pending instanceof CharacterData)) {
+            trace("Entrada sem personagem selecionado: " + user.getName());
+            return;
+        }
+        CharacterData data = (CharacterData) pending;
+        RoomSimulationContext expected = extension.selectRoomForMap(data.mapId);
+        if (expected != destination) return;
+        NavMeshPolygon polygon = destination.getNavMesh().findContainingPolygon(data.x, data.y, data.z);
+        if (polygon == null) return;
 
-	@Override
-	public void handleServerEvent(ISFSEvent event) throws SFSException {
-
-		// 1. Recupera o usuário que acabou de entra em Sido com sucesso
-		User user = (User) event.getParameter(SFSEventParam.USER);
-
-		CharacterManager characterManager = ((SidoExtension) getParentExtension()).getCharacterManager();
-
-		if (!characterManager.hasCharacter(user)) {
-
-			Warrior warrior = new Warrior(1001L, user, "TestWarrior", 0.0f, 0.0f, 0.0f);
-
-			characterManager.registerCharacter(warrior);
-
-		}
-
-		character.Character found = characterManager.getByUser(user);
-
-		character.Character character = characterManager.getByUser(user);
-
-		character.setPosition(0.0f, 0.0f, 0.0f);
-
-		trace("Character encontrado: " + found);
-
-		/*
-		 * User user = (User) event.getParameter(SFSEventParam.USER);
-		 * 
-		 * // 3. Recupera o gerenciador do banco de dados IDBManager dbManager =
-		 * getParentExtension().getParentZone().getDBManager();
-		 * 
-		 * PlayerSession playerSession = new PlayerSession();
-		 * 
-		 * int characterId = params.getInt("characterId");
-		 * 
-		 * try { // Consulta os personagens baseando-se no nome do usuário (ou ID do
-		 * usuário se você tiver) // IMPORTANTE: Altere "user_chars" e "username_coluna"
-		 * de acordo com o mapeamento exato da sua tabela String sql =
-		 * "SELECT id, nome, classe, exp, mapa FROM user_chars WHERE username_coluna = ?"
-		 * ;
-		 * 
-		 * // O SFS3 executa a query e já mapeia o resultado do PostgreSQL em um
-		 * ISFSArray automaticamente ISFSArray charList = dbManager.executeQuery(sql,
-		 * new Object[] { user.getName() });
-		 * 
-		 * playerSession.setCharacterId(character.getId());
-		 * playerSession.setName(character.getName());
-		 * playerSession.setClassId(character.getClassId());
-		 * playerSession.setExp(character.getExp());
-		 * playerSession.setMapId(character.getMapId());
-		 * 
-		 * user.setProperty("playerSession", playerSession);
-		 * 
-		 * // Criamos a lista de variáveis que serão propagadas na rede
-		 * List<UserVariable> userVariables = new ArrayList<>();
-		 * 
-		 * userVariables.add(new SFSUserVariable("id", id)); userVariables.add(new
-		 * SFSUserVariable("name", nome)); userVariables.add(new
-		 * SFSUserVariable("class", classe)); userVariables.add(new
-		 * SFSUserVariable("exp", exp)); userVariables.add(new SFSUserVariable("map",
-		 * mapa));
-		 * 
-		 * getApi().setUserVariables(user, userVariables);
-		 */
-	}
-
+        for (RoomSimulationContext other : extension.getRoomContexts()) {
+            if (other != destination) {
+                synchronized (other) { RoomCharacterSupport.remove(user, other); }
+            }
+        }
+        synchronized (destination) {
+            if (destination.getCharacterManager().hasCharacter(user)) return;
+            Character warrior;
+            switch (data.classId) {
+                case 1: warrior = new Warrior(data.id, user, data.name, data.x, data.y, data.z); break;
+                case 2: warrior = new Archer(data.id, user, data.name, data.x, data.y, data.z); break;
+                case 3: warrior = new Mage(data.id, user, data.name, data.x, data.y, data.z); break;
+                default: return;
+            }
+            warrior.setCclassId(data.classId);
+            warrior.setLevel(data.level);
+            // Character atual usa int para experiencia; evitar truncamento silencioso.
+            warrior.setTotalExperience(data.totalExperience);
+            warrior.setHealth(data.currentHealth);
+            warrior.setMana(data.currentMana);
+            warrior.setCurrentAgility(data.currentAgility);
+            warrior.setStrength(data.strengthPoints);
+            warrior.setDexterity(data.dextePoints);
+            warrior.setIntelligence(data.powerPoints);
+            warrior.setResourcePoints(data.resourcePoints);
+            warrior.setCurrentPolygonId(polygon.id);
+            destination.getCharacterManager().registerCharacter(warrior);
+        }
+        user.getSession().removeProperty(CharacterSelectHandler.PENDING_CHARACTER_KEY);
+        ISFSObject response = new SFSObject();
+        response.putBool("success", true);
+        response.putLong("characterId", data.id);
+        response.putString("name", data.name);
+        response.putInt("classId", data.classId);
+        response.putInt("level", data.level);
+        response.putLong("totalExperience", data.totalExperience);
+        response.putInt("mapId", data.mapId);
+        response.putFloat("x", data.x);
+        response.putFloat("y", data.y);
+        response.putFloat("z", data.z);
+        response.putInt("currentHealth", data.currentHealth);
+        response.putInt("currentMana", data.currentMana);
+        response.putInt("currentAgility", data.currentAgility);
+        response.putInt("strengthPoints", data.strengthPoints);
+        response.putInt("agilityPoints", data.dextePoints);
+        response.putInt("powerPoints", data.powerPoints);
+        response.putInt("resourcePoints", data.resourcePoints);
+        send("characterLoaded", response, user);
+    }
 }

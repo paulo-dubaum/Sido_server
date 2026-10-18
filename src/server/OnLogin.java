@@ -4,12 +4,7 @@ import java.security.MessageDigest;
 import java.sql.SQLException;
 
 import com.smartfoxserver.bitswarm.sessions.ISession;
-import com.smartfoxserver.components.login.ILoginAssistantPlugin;
-import com.smartfoxserver.components.login.LoginAssistantComponent;
-import com.smartfoxserver.components.login.LoginData;
-import com.smartfoxserver.components.login.PasswordCheckException;
 import com.smartfoxserver.core.ISFSEvent;
-import com.smartfoxserver.core.SFSConstants;
 import com.smartfoxserver.core.SFSEventParam;
 import com.smartfoxserver.db.IDBManager;
 import com.smartfoxserver.entities.data.ISFSArray;
@@ -19,11 +14,10 @@ import com.smartfoxserver.exceptions.SFSErrorData;
 import com.smartfoxserver.exceptions.SFSException;
 import com.smartfoxserver.exceptions.SFSLoginException;
 import com.smartfoxserver.extensions.BaseServerEventHandler;
-import com.smartfoxserver.extensions.ISFSExtension;
-import com.smartfoxserver.extensions.SFSExtension;
-import com.smartfoxserver.security.DefaultPermissionProfile;
 
 public class OnLogin extends BaseServerEventHandler {
+
+    public static final String DATABASE_USER_ID_KEY = "databaseUserId";
 
 	@Override
 	public void handleServerEvent(ISFSEvent event) throws SFSException {
@@ -33,13 +27,13 @@ public class OnLogin extends BaseServerEventHandler {
 		String clearPasswordFromClient = outData.getShortString("passwd");
 		ISession session = (ISession) event.getParameter(SFSEventParam.SESSION);
 
-		trace("01 - Iniciado: Username: " + loginName + " Password: " + clearPasswordFromClient);
+		
 
 		// 2. Recupera o gerenciador do banco de dados configurado na Zone
 		IDBManager dbManager = getParentExtension().getParentZone().getDBManager();
 
 		try {
-			String sql = "SELECT password FROM users WHERE username = ?";
+			String sql = "SELECT id, password FROM users WHERE username = ?";
 
 			ISFSArray rows = dbManager.executeQuery(sql, new Object[] { loginName });
 
@@ -56,8 +50,7 @@ public class OnLogin extends BaseServerEventHandler {
 			// Transforma a senha digitada pelo usuário em um hash SHA-256 para comparação
 			String hashedClientPassword = convertToSHA256(clearPasswordFromClient);
 
-			trace("02 - Iniciado: Username: " + loginName + " Password: " + hashedClientPassword + " Hash: "
-					+ hashedPasswordFromDB);
+
 
 			// Compara os dois hashes hexadecimais
 			if (!hashedClientPassword.equalsIgnoreCase(hashedPasswordFromDB)) {
@@ -65,7 +58,10 @@ public class OnLogin extends BaseServerEventHandler {
 				throw new SFSLoginException("Senha incorreta.", errorData);
 			}
 
-			trace("Login efetuado com sucesso via SHA-256 para o usuário: " + loginName);
+			// O ID persistente e armazenado apenas apos a autenticacao.
+			Long databaseUserId = userRow.getLong("id");
+			session.setProperty(DATABASE_USER_ID_KEY, databaseUserId);
+			trace("Login efetuado com sucesso para o usuario: " + loginName);
 
 		} catch (SQLException e) {
 			trace("Erro de banco: " + e.getMessage());
