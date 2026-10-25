@@ -37,7 +37,6 @@ public class NpcItem extends MMOItem {
     private List<NavMeshPoint> waypoints = new ArrayList<>();
     private int currentWaypointIndex;
     private float movementSpeed = 3.0f;
-    private float agentRadius = 0.0f; // Construtor legado: sem colisao ate configurar via NpcData.
     private float lastPathTargetX;
     private float lastPathTargetZ;
     private boolean hasPathTargetPosition;
@@ -46,36 +45,38 @@ public class NpcItem extends MMOItem {
     private float attackRange = 1.0f;
     private float chaseResumeRange = 2.5f;
     private float preferredAttackDistance = 1.5f;
-    private float disengageTime = 2.0f;
     private float maxChaseDistance = 30.0f;
     private long attackIntervalMs = 1500L;
     private long nextAttackTimeMs;
     private int attackSequence;
-    
-    private int combatIntelligence;
 
-    public int getCombatIntelligence() {
-        return combatIntelligence;
-    }
+    // Contrato estatico e estado de combate da instancia.
+    private NpcData data;
+    private NpcData.NpcBehavior npcBehavior = NpcData.NpcBehavior.VISCERAL;
+    private NpcData.NpcRank npcRank = NpcData.NpcRank.MINION;
+    private NpcData.AttackType attackType = NpcData.AttackType.MELEE;
+    private float agentRadius = 0.2f;
+    private float separationRadius = 0.2f;
+    private float disengageTime;
+    private double attacksPerSecond = 1000.0 / 1500.0;
+    private int attackPreparationMs;
+    private int currentHealth;
+    private int maxHealth;
+    private long deathDurationMs;
 
-    public void setCombatIntelligence(int combatIntelligence) {
-        this.combatIntelligence = combatIntelligence;
-    }
 
     public NpcItem(int npcTypeId, int npcId,
-            float x, float y, float z, float detectionRange) {
-
- super(createInitialVariables(npcTypeId, npcId, x, y, z));
-
- this.npcTypeId = npcTypeId;
- this.x = x;
- this.y = y;
- this.z = z;
- this.spawnX = x;
- this.spawnY = y;
- this.spawnZ = z;
- this.detectionRange = detectionRange;
-}
+                   float x, float y, float z, float detectionRange) {
+        super(createInitialVariables(npcTypeId, npcId));
+        this.npcTypeId = npcTypeId;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.spawnX = x;
+        this.spawnY = y;
+        this.spawnZ = z;
+        this.detectionRange = detectionRange;
+    }
 
     /**
      * Cria o NPC utilizando a velocidade definida no banco de configuracoes.
@@ -85,17 +86,27 @@ public class NpcItem extends MMOItem {
                    float x, float y, float z) {
         this(requireData(data).getNpcTypeId(), npcId,
              x, y, z, data.getDetectionRange());
+        data.validate();
+        this.data = data;
+        this.npcBehavior = data.getNpcBehavior();
+        this.npcRank = data.getNpcRank();
+        this.attackType = data.getAttackType();
         setMovementSpeed(data.getMovementSpeed());
-        this.agentRadius = requireNonNegativeFinite("agentRadius", data.getAgentRadius());
         this.attackRange = requireNonNegativeFinite("attackRange", data.getAttackRange());
         this.preferredAttackDistance = requireNonNegativeFinite(
                 "preferredAttackDistance", data.getPreferredAttackDistance());
         this.chaseResumeRange = requireNonNegativeFinite(
                 "chaseResumeRange", data.getChaseResumeRange());
-        setMaxChaseDistance(data.getMaxChaseDistance());
-        setAttackIntervalMs(data.getAttackIntervalMs());
-        
-        this.combatIntelligence = data.getCombatIntelligence();
+        this.maxChaseDistance = data.getMaxChaseDistance();
+        this.agentRadius = data.getAgentRadius();
+        this.separationRadius = data.getSeparationRadius();
+        this.disengageTime = data.getDisengageTime();
+        this.attacksPerSecond = data.getAttacksPerSecond();
+        this.attackPreparationMs = data.getAttackPreparationMs();
+        this.attackIntervalMs = data.isCombatant() ? data.getAttackIntervalMs() : 0L;
+        this.maxHealth = data.getMaxHealth();
+        this.currentHealth = maxHealth;
+        this.deathDurationMs = data.getDeathDurationMs();
     }
 
     private static NpcData requireData(NpcData data) {
@@ -105,27 +116,17 @@ public class NpcItem extends MMOItem {
         return data;
     }
 
-	private static float requireNonNegativeFinite(String name, float value) {
+    private static float requireNonNegativeFinite(String name, float value) {
         if (!Float.isFinite(value) || value < 0.0f) {
             throw new IllegalArgumentException(name + " deve ser finito e nao negativo.");
         }
         return value;
     }
 
-    private static List<IMMOItemVariable> createInitialVariables(
-            int npcTypeId, int npcId,
-            float x, float y, float z) {
-
-        List<IMMOItemVariable> variables = new ArrayList<>(6);
-
+    private static List<IMMOItemVariable> createInitialVariables(int npcTypeId, int npcId) {
+        List<IMMOItemVariable> variables = new ArrayList<>(2);
         variables.add(new MMOItemVariable("nid", npcId));
         variables.add(new MMOItemVariable("ntid", npcTypeId));
-
-        variables.add(new MMOItemVariable("x", x));
-        variables.add(new MMOItemVariable("y", y));
-        variables.add(new MMOItemVariable("z", z));
-        variables.add(new MMOItemVariable("rot", 0.0f));
-
         return variables;
     }
 
@@ -215,10 +216,9 @@ public class NpcItem extends MMOItem {
     }
 
     public float getMovementSpeed() { return movementSpeed; }
-    public float getAgentRadius() { return agentRadius; }
 
     public void setMovementSpeed(float movementSpeed) {
-        if (movementSpeed < 0.0f) {
+        if (!Float.isFinite(movementSpeed) || movementSpeed < 0.0f) {
             throw new IllegalArgumentException("Velocidade não pode ser negativa.");
         }
         this.movementSpeed = movementSpeed;
@@ -240,10 +240,32 @@ public class NpcItem extends MMOItem {
     public float getPreferredAttackDistance() { return preferredAttackDistance; }
 
     public void setMaxChaseDistance(float maxChaseDistance) {
-        if (maxChaseDistance <= 0.0f) {
+        if (!Float.isFinite(maxChaseDistance) || maxChaseDistance <= 0.0f) {
             throw new IllegalArgumentException("Distância máxima deve ser positiva.");
         }
         this.maxChaseDistance = maxChaseDistance;
+    }
+
+    // Atributos estaticos do tipo de NPC e estado da instancia.
+    public NpcData getNpcData() { return data; }
+    public NpcData.NpcBehavior getNpcBehavior() { return npcBehavior; }
+    public NpcData.NpcRank getNpcRank() { return npcRank; }
+    public NpcData.AttackType getAttackType() { return attackType; }
+    public boolean isCombatant() {
+        return npcBehavior == NpcData.NpcBehavior.VISCERAL
+                || npcBehavior == NpcData.NpcBehavior.INTELLIGENT;
+    }
+    public float getAgentRadius() { return agentRadius; }
+    public float getSeparationRadius() { return separationRadius; }
+    public float getDisengageTime() { return disengageTime; }
+    public double getAttacksPerSecond() { return attacksPerSecond; }
+    public int getAttackPreparationMs() { return attackPreparationMs; }
+    public int getCurrentHealth() { return currentHealth; }
+    public int getMaxHealth() { return maxHealth; }
+    public long getDeathDurationMs() { return deathDurationMs; }
+    public void setCurrentHealth(int health) {
+        if (health < 0 || health > maxHealth) throw new IllegalArgumentException("Vida fora do limite");
+        this.currentHealth = health;
     }
 
     // Combate.
@@ -253,6 +275,9 @@ public class NpcItem extends MMOItem {
     public void setAttackIntervalMs(long attackIntervalMs) {
         if (attackIntervalMs <= 0L) {
             throw new IllegalArgumentException("O intervalo de ataque deve ser positivo.");
+        }
+        if (data != null) {
+            throw new IllegalStateException("Intervalo derivado do NpcData; altere attacksPerSecond no JSON.");
         }
         this.attackIntervalMs = attackIntervalMs;
     }
@@ -272,10 +297,4 @@ public class NpcItem extends MMOItem {
     public void incrementAttackSequence() {
         attackSequence++;
     }
-
-	public float getDisengageTime() {
-		// TODO Auto-generated method stub
-		return disengageTime;
-	}
-	
 }

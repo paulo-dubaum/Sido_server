@@ -11,7 +11,7 @@ import com.smartfoxserver.extensions.BaseClientRequestHandler;
 import com.smartfoxserver.mmo.Vec3D;
 
 import character.CharacterData;
-import infra.CharacterDAO;
+import infra.CharacterLifecycleDAO;
 
 /**
  * Valida a selecao de personagem e solicita a entrada na MMORoom.
@@ -61,12 +61,19 @@ public final class CharacterSelectHandler extends BaseClientRequestHandler {
         }
 
         try {
-            CharacterDAO dao = new CharacterDAO(
+            CharacterLifecycleDAO dao = new CharacterLifecycleDAO(
                 getParentExtension().getParentZone().getDBManager()
             );
 
+            
+            
             CharacterData data = dao.findByIdAndUserId(characterId, userId);
+            
+            
+            
             if (data == null) {
+            	
+            	
                 error(user, "Personagem nao pertence a esta conta.");
                 return;
             }
@@ -117,7 +124,7 @@ public final class CharacterSelectHandler extends BaseClientRequestHandler {
                 responseData.putInt("s", data.strengthPoints);
                 responseData.putInt("a", data.dextePoints);
                 responseData.putInt("p", data.powerPoints);
-                responseData.putInt("r", data.resourcePoints);
+                responseData.putInt("r", data.agilityPoints);
                 
                 // 5. Envia o pacote de rede diretamente para o cliente que acabou de conectar
                 // Parâmetros: "comandoCustomizado", dadosDoComando, usuarioDestinatario

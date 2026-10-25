@@ -1,6 +1,11 @@
 package character;
 
 import com.smartfoxserver.entities.User;
+import character.equipment.Weapon;
+import character.equipment.AttributeType;
+import character.stats.CharacterAttributes;
+import character.stats.CharacterDerivedStats;
+import character.stats.CharacterFormulaRegistry;
 
 /**
  * Representa a base de um personagem do jogo.
@@ -48,8 +53,65 @@ public abstract class Character {
     private int strength;
     private int dexterity;
     private int intelligence;
-    private int resourcePoints;
+    private int vitality;
+    private int availableAttributePoints;
+
+    // Socket de arma principal (null = vazio).
+    private Weapon equippedWeapon;
     
+    // =========================================================
+    // EQUIPMENT AND CLASS ATTRIBUTES
+    // =========================================================
+
+    public Weapon getEquippedWeapon() {
+        return equippedWeapon;
+    }
+
+    /** Equipa uma arma ou null para deixar o socket vazio. */
+    public void setEquippedWeapon(Weapon weapon) {
+        this.equippedWeapon = weapon;
+    }
+
+    /** Mapeamento inicial: 1 Warrior, 2 Archer, 3 Mage. */
+    public AttributeType getPrimaryAttribute() {
+        switch (cclassId) {
+            case 1: return AttributeType.STRENGTH;
+            case 2: return AttributeType.DEXTERITY;
+            case 3: return AttributeType.INTELLIGENCE;
+            default: throw new IllegalStateException("Classe desconhecida: " + cclassId);
+        }
+    }
+
+    public AttributeType getSecondaryAttribute() {
+        switch (cclassId) {
+            case 1: return AttributeType.DEXTERITY;
+            case 2: return AttributeType.STRENGTH;
+            case 3: return AttributeType.DEXTERITY;
+            default: throw new IllegalStateException("Classe desconhecida: " + cclassId);
+        }
+    }
+
+    public int getAttributeValue(AttributeType attribute) {
+        switch (attribute) {
+            case STRENGTH: return strength;
+            case DEXTERITY: return dexterity;
+            case INTELLIGENCE: return intelligence;
+            case VITALITY: return vitality;
+            default: throw new IllegalArgumentException("Atributo invalido: " + attribute);
+        }
+    }
+
+    /** Atributos brutos; nenhum deles tem efeito universal entre classes. */
+    public CharacterAttributes getBaseAttributes() {
+        return new CharacterAttributes(strength, dexterity, intelligence, vitality);
+    }
+
+    /** Calcula valores derivados usando exclusivamente a formula cadastrada para a classe. */
+    public CharacterDerivedStats calculateDerivedStats(CharacterFormulaRegistry formulas) {
+        if (formulas == null) throw new IllegalArgumentException("Registro de formulas nulo.");
+        return formulas.calculate(cclassId, level, getBaseAttributes());
+    }
+
     // =========================================================
     // WORLD POSITION
     // =========================================================
@@ -264,12 +326,20 @@ public abstract class Character {
 		this.intelligence = intelligence;
 	}
 
-	public int getResourcePoints() {
-		return resourcePoints;
+	public int getVitalityPoints() {
+		return vitality;
 	}
 
-	public void setResourcePoints(int resourcePoints) {
-		this.resourcePoints = resourcePoints;
+	public void setVitalityPoints(int resourcePoints) {
+		this.vitality = resourcePoints;
+	}
+
+	public int getAvailableAttributePoints() {
+		return availableAttributePoints;
+	}
+
+	public void setAvailableAttributePoints(int availableAttributePoints) {
+		this.availableAttributePoints = availableAttributePoints;
 	}
 
 }

@@ -6,7 +6,7 @@ import com.smartfoxserver.entities.User;
 import com.smartfoxserver.exceptions.SFSException;
 import com.smartfoxserver.extensions.BaseServerEventHandler;
 import character.Character;
-import infra.CharacterDAO;
+import infra.CharacterLifecycleDAO;
 
 /** Salva e remove personagens de todas as salas, nao apenas da sala inicial. */
 public final class UserDisconnectHandler extends BaseServerEventHandler {
@@ -22,30 +22,36 @@ public final class UserDisconnectHandler extends BaseServerEventHandler {
 				Character character = context.getCharacterManager().getByUser(user);
 				if (character == null)
 					continue;
-				// Nao remover em caso de falha no banco: permitir nova tentativa de
-				// persistencia.
+				// A limpeza da sala nao pode depender do resultado do banco.
+				try {
+					context.getNpcManager().onCharacterDisconnected(character);
+				} finally {
+					context.getCharacterManager().removeByUser(user);
+				}
+
 				if (!(account instanceof Number)) {
-					trace("Nao foi possivel salvar personagem: conta nao identificada. CharacterID="
+					trace("Personagem removido da sala, mas conta nao identificada para salvar. CharacterID="
 							+ character.getCharacterId());
 					continue;
 				}
 				int mapId = mapIdForRoom(context.getRoom().getName());
 				if (mapId < 0) {
-					trace("Nao foi possivel salvar personagem: regiao desconhecida.");
+					trace("Personagem removido da sala, mas regiao desconhecida para salvar. CharacterID="
+							+ character.getCharacterId());
 					continue;
 				}
 				try {
-					new CharacterDAO(extension.getParentZone().getDBManager()).saveState(character.getCharacterId(),
-							((Number) account).longValue(), mapId, character.getX(), character.getY(), character.getZ(),
-							character.getLevel(), character.getTotalExperience(), character.getHealth(),
-							character.getMana(), character.getCurrentAgility(), character.getStrength(),
-							character.getDexterity(), character.getIntelligence(), character.getResourcePoints());
+					new CharacterLifecycleDAO(extension.getParentZone().getDBManager()).saveState(
+							character.getCharacterId(), ((Number) account).longValue(), mapId,
+							character.getX(), character.getY(), character.getZ(),
+							character.getLevel(), character.getTotalExperience(),
+							character.getHealth(), character.getMana(), character.getCurrentAgility(),
+							character.getStrength(), character.getDexterity(), character.getIntelligence(),
+							character.getVitalityPoints(), character.getAvailableAttributePoints());
 				} catch (Exception e) {
 					trace("Erro ao salvar CharacterID=" + character.getCharacterId() + ": " + e);
-					continue;
 				}
-				context.getNpcManager().onCharacterDisconnected(character);
-				context.getCharacterManager().removeByUser(user);
+
 			}
 		}
 	}

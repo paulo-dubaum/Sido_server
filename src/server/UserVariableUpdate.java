@@ -46,6 +46,10 @@ public class UserVariableUpdate extends BaseServerEventHandler {
                 
                 
                 if (character == null) continue;
+                
+                trace("OOO");
+                
+                trace(context.getRoom() + " " + user.getJoinedRooms());
 
                 // Rejeita movimentos de um contexto do qual o usuario ja saiu.
                 if (!user.getJoinedRooms().contains(context.getRoom())) return;

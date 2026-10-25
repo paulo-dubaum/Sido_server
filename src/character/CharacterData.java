@@ -4,13 +4,13 @@ package character;
 public final class CharacterData {
 	public final long id, userId, totalExperience;
 	public final String name;
-	public final int classId, level, mapId, currentHealth, currentMana, currentAgility;
-	public final int strengthPoints, dextePoints, powerPoints, resourcePoints;
+	public final int classId, level, mapId, currentHealth, currentMana, currentAgility ;
+	public final int strengthPoints, dextePoints, powerPoints, agilityPoints, unallocatedAttributePoints ;
 	public final float x, y, z;
 
 	public CharacterData(long id, long userId, String name, int classId, int level, long totalExperience, int mapId,
 			float x, float y, float z, int currentHealth, int currentMana, int currentAgility, int strengthPoints,
-			int dextePoints, int powerPoints, int resourcePoints) {
+			int dextePoints, int powerPoints, int agilityPoints, int unallocatedAttributePoints, int unallocatedAttributePoints2 ) {
 		this.id = id;
 		this.userId = userId;
 		this.name = name;
@@ -18,6 +18,7 @@ public final class CharacterData {
 		this.level = level;
 		this.totalExperience = totalExperience;
 		this.mapId = mapId;
+		this.unallocatedAttributePoints = unallocatedAttributePoints2;
 		this.x = x;
 		this.y = y;
 		this.z = z;
@@ -27,6 +28,6 @@ public final class CharacterData {
 		this.strengthPoints = strengthPoints;
 		this.dextePoints = dextePoints;
 		this.powerPoints = powerPoints;
-		this.resourcePoints = resourcePoints;
+		this.agilityPoints = agilityPoints;
 	}
 }

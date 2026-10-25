@@ -181,6 +181,20 @@ public class NpcManager {
         PendingSync(float x, float y, float z) { this.x=x; this.y=y; this.z=z; }
     }
 
+    // Ciclo de ataque independente da navegacao e dos slots.
+    private enum AttackPhase { PREPARING, RECOVERY }
+    private static final class AttackCycle {
+        AttackPhase phase;
+        long impactAtNs;
+        long nextStartAtNs;
+        AttackCycle(AttackPhase phase, long impactAtNs, long nextStartAtNs) {
+            this.phase = phase;
+            this.impactAtNs = impactAtNs;
+            this.nextStartAtNs = nextStartAtNs;
+        }
+    }
+    private final Map<Integer, AttackCycle> attackCycles = new HashMap<>();
+
     private long tickCount;
     private long lastUpdateTimeNs;
 
@@ -204,6 +218,18 @@ public class NpcManager {
         this.room = room;
         this.navMesh = navMesh;
         this.characterManager = characterManager;
+        
+        setCharacterDefenseProvider(new CharacterDefenseProvider() {
+            @Override
+            public int physicalDefense(character.Character target) {
+                return target.getLevel() * 2;
+            }
+
+            @Override
+            public int elementalDefense(character.Character target) {
+                return 0; // Provisorio: resistencia elemental ainda nao definida.
+            }
+        });
     }
 
     // ---------------------------------------------------------------------
@@ -265,6 +291,7 @@ public class NpcManager {
         lastBumpTick.remove(mmoItemId);
         chaseProgress.remove(mmoItemId);
         pendingSync.remove(mmoItemId);
+        attackCycles.remove(mmoItemId);
         yieldSequences.remove(mmoItemId);
         if (attackSlotOverrides.remove(mmoItemId) != null) fixedSlotReleased++;
         if (npc == null) {
@@ -276,9 +303,31 @@ public class NpcManager {
     }
 
     public synchronized void onCharacterDisconnected(character.Character character) {
+        if (character == null) return;
         for (NpcItem npc : npcs.values()) {
             if (npc.getTarget() == character) {
                 startReturning(npc);
+            }
+            if (ignoredUntilExit.get(npc.getId()) == character) {
+                ignoredUntilExit.remove(npc.getId());
+            }
+        }
+    }
+
+    /**
+     * Invocar tambem quando outra fonte (PvP, habilidade, efeito) matar o personagem.
+     * Cancela preparacoes, remove alvos e libera os oito slots imediatamente.
+     * Nao remove o personagem do CharacterManager: morte nao e desconexao.
+     */
+    public synchronized void onCharacterDied(character.Character character) {
+        if (character == null || character.getHealth() > 0) return;
+        for (NpcItem npc : npcs.values()) {
+            if (npc.getTarget() == character) {
+                // startReturning limpa ciclo, alvo, slot, caminhos e sincroniza alvo -1.
+                startReturning(npc);
+            }
+            if (ignoredUntilExit.get(npc.getId()) == character) {
+                ignoredUntilExit.remove(npc.getId());
             }
         }
     }
@@ -356,17 +405,18 @@ public class NpcManager {
             System.out.printf("NPC UPDATE DeltaTime=%.6f NPCs=%d Processing=%.3f ms%n",
                     deltaTime, npcs.size(), updateNs / 1_000_000.0);
         }
-        if (tickCount % PERF_INTERVAL_TICKS == 0) {
+        /*if (tickCount % PERF_INTERVAL_TICKS == 0) {
             printPerformance();
-        }
+        }*/
         
-        if (tickCount % 100 == 0) {
+        /*if (tickCount % 100 == 0) {
             debugNpcDistances();
-        }
+        }*/
     }
 
     private void updateNpc(NpcItem npc, float deltaTime) {
         if (npc.getState() == NpcState.DEAD) {
+            attackCycles.remove(npc.getId());
             releaseAttackSlot(npc);
             stuckStates.remove(npc.getId());
             returnProgress.remove(npc.getId());
@@ -412,6 +462,7 @@ public class NpcManager {
                 continue;
             }
             npc.setTarget(character);
+            syncAttackTarget(npc, character);
             chaseProgress.put(npc.getId(), new ChaseProgress(
                     (float) Math.sqrt(distanceSquaredXZ(npc.getX(), npc.getZ(),
                             character.getX(), character.getZ())), System.nanoTime()));
@@ -473,20 +524,12 @@ public class NpcManager {
             npc.setState(NpcState.ATTACK);
             chaseProgress.remove(npc.getId());
             stuckStates.remove(npc.getId());
-            npc.setNextAttackTimeMs(System.currentTimeMillis()
-                    + npc.getAttackIntervalMs());
             return;
         }
 
         if (hasSlot) {
             if (shouldRecalculateChasePath(npc, target)) {
-                NavMeshPoint destination = isTactical(npc)
-                        ? getTacticalAttackDestination(npc, target)
-                        : getAttackSlotDestination(npc, target);
-                if (!isTactical(npc) && distanceSquared <= (npc.getAttackRange() + ATTACK_APPROACH_MARGIN)
-                        * (npc.getAttackRange() + ATTACK_APPROACH_MARGIN)) {
-                    destination = new NavMeshPoint(target.getX(), target.getY(), target.getZ());
-                }
+                NavMeshPoint destination = getTacticalAttackDestination(npc, target);
                 if (destination != null) {
                     NavMeshPolygon polygon = navMesh.findContainingPolygon(
                             destination.x, destination.y, destination.z);
@@ -521,41 +564,66 @@ public class NpcManager {
             return;
         }
         if (!attackSlotOverrides.containsKey(npc.getId())) {
+            attackCycles.remove(npc.getId());
             npc.setState(NpcState.CHASE);
+            return;
+        }
+
+        long nowNs = System.nanoTime();
+        AttackCycle cycle = attackCycles.get(npc.getId());
+        if (cycle != null && cycle.phase == AttackPhase.PREPARING) {
+            // Durante a preparacao nao move, nao persegue e nao troca de alvo.
+            // A fuga do alvo so e avaliada no instante do impacto.
+            npc.clearPath();
+            if (nowNs < cycle.impactAtNs) return;
+            boolean hit = isTargetNavigable(target)
+                    && distanceSquaredXZ(npc.getX(), npc.getZ(), target.getX(), target.getZ())
+                    <= npc.getAttackRange() * npc.getAttackRange();
+            if (hit) executeAttack(npc);
+            cycle.phase = AttackPhase.RECOVERY;
+            if (!hit) setNpcVariables(npc, Arrays.asList(
+                    new MMOItemVariable("attackPhase", "RECOVERY")), SyncKind.ATTACK);
             return;
         }
 
         float distanceSquared = distanceSquaredXZ(
                 npc.getX(), npc.getZ(), target.getX(), target.getZ());
-        // Histerese: nunca retoma CHASE antes de sair efetivamente do alcance.
         float chaseResumeRange = Math.max(npc.getChaseResumeRange(),
                 npc.getAttackRange() + ATTACK_ENTER_TOLERANCE);
-        if (distanceSquared > chaseResumeRange * chaseResumeRange) {
+        if (distanceSquared > chaseResumeRange * chaseResumeRange
+                || distanceSquared > npc.getAttackRange() * npc.getAttackRange()) {
+            // Preserva o cooldown iniciado no START mesmo durante perseguicao.
             npc.setState(NpcState.CHASE);
             chaseProgress.put(npc.getId(), new ChaseProgress(
-                    (float) Math.sqrt(distanceSquared), System.nanoTime()));
+                    (float) Math.sqrt(distanceSquared), nowNs));
             return;
         }
 
-        float attackRange = npc.getAttackRange();
-        if (distanceSquared > attackRange * attackRange) {
-            npc.setState(NpcState.CHASE);
-            chaseProgress.put(npc.getId(), new ChaseProgress(
-                    (float) Math.sqrt(distanceSquared), System.nanoTime()));
-            return;
+        // Reposicionamento tatico permitido somente fora da preparacao.
+        updateTacticalAttackerPosition(npc, target, deltaTime);
+        if (cycle != null && nowNs < cycle.nextStartAtNs) return;
+        if (!isTargetNavigable(target)
+                || distanceSquaredXZ(npc.getX(), npc.getZ(), target.getX(), target.getZ())
+                > npc.getAttackRange() * npc.getAttackRange()) return;
+
+        long intervalNs = Math.max(1L, npc.getAttackIntervalMs()) * 1_000_000L;
+        long preparationNs = Math.max(0L, npc.getNpcData().getAttackPreparationMs()) * 1_000_000L;
+        // A preparacao nao pode ultrapassar o intervalo total entre STARTs.
+        // Se a configuracao for invalida, o impacto ocorre no fim do intervalo.
+        preparationNs = Math.min(preparationNs, intervalNs);
+        cycle = new AttackCycle(AttackPhase.PREPARING,
+                nowNs + preparationNs, nowNs + intervalNs);
+        attackCycles.put(npc.getId(), cycle);
+        npc.clearPath();
+        setNpcVariables(npc, Arrays.asList(
+                new MMOItemVariable("attackPhase", "PREPARING"),
+                new MMOItemVariable("attackPreparationMs", preparationNs / 1_000_000L)),
+                SyncKind.ATTACK);
+        // Para preparacao zero, resolve o impacto no mesmo tick.
+        if (preparationNs == 0L) {
+            executeAttack(npc);
+            cycle.phase = AttackPhase.RECOVERY;
         }
-
-        // Reposicionamento opcional: somente se um setor acessivel trouxer
-        // ganho angular real. O NPC continua em ATTACK e conserva sua permissao.
-        if (isTactical(npc)) updateTacticalAttackerPosition(npc, target, deltaTime);
-
-        long now = System.currentTimeMillis();
-        if (now < npc.getNextAttackTimeMs()) {
-            return;
-        }
-
-        executeAttack(npc);
-        npc.setNextAttackTimeMs(now + npc.getAttackIntervalMs());
     }
 
     private void updateReturning(NpcItem npc, float deltaTime) {
@@ -628,7 +696,9 @@ public class NpcManager {
     }
 
     private void startReturning(NpcItem npc) {
+        if (npc.hasTarget()) syncAttackTarget(npc, null);
         npc.setTarget(null);
+        attackCycles.remove(npc.getId());
         stuckStates.remove(npc.getId());
         chaseProgress.remove(npc.getId());
         releaseAttackSlot(npc);
@@ -911,8 +981,8 @@ public class NpcManager {
         // O titular mantem a permissao e nao entra no anel de espera.
         // Reinicia a rota para evitar insistir em um waypoint bloqueado.
         npc.clearPath();
-        if (isTactical(npc)) tacticalDestinations.remove(npc.getId());
-        if (isTactical(npc) && tryTacticalReposition(npc, target)) {
+        tacticalDestinations.remove(npc.getId());
+        if (tryTacticalReposition(npc, target)) {
             tacticalRepositions++;
             return;
         }
@@ -946,7 +1016,7 @@ public class NpcManager {
     /** Destino externo temporario, sem substituir as reservas do anel de ataque. */
     private boolean isTactical(NpcItem npc) {
         // 0: irracional; 1+: inteligente. Exige getter em NpcItem.
-        return npc.getCombatIntelligence() > 0;
+        return npc.getNpcBehavior() == NpcData.NpcBehavior.INTELLIGENT;
     }
 
     private boolean assignOuterRingWait(NpcItem npc, character.Character target, StuckState state) {
@@ -1068,7 +1138,7 @@ public class NpcManager {
         if (distanceSquaredXZ(npc.getX(), npc.getZ(), state.waitX, state.waitZ)
                 <= WAIT_RING_ARRIVAL_SQ) {
             npc.clearPath();
-            if (isTactical(npc) && tickCount >= state.nextOrbitTick) {
+            if (tickCount >= state.nextOrbitTick) {
                 if (assignOuterRingWait(npc, target, state, true)) tacticalOrbitMoves++;
                 else {
                     tacticalOrbitFailures++;
@@ -1080,7 +1150,7 @@ public class NpcManager {
         if (npc.hasPath()) moveNpc(npc, deltaTime);
         // Sem progresso por um intervalo: procura outro destino, sem ficar
         // preso indefinidamente no mesmo waypoint do anel.
-        if (isTactical(npc) && tickCount - state.orbitProgressTick >= STUCK_CHECK_TICKS) {
+        if (tickCount - state.orbitProgressTick >= STUCK_CHECK_TICKS) {
             float progressed = distanceSquaredXZ(npc.getX(), npc.getZ(),
                     state.orbitProgressX, state.orbitProgressZ);
             state.orbitProgressX = npc.getX();
@@ -1102,13 +1172,7 @@ public class NpcManager {
         if (!npc.hasPath()) return true;
         if (tickCount % PATH_RECALC_INTERVAL_TICKS != 0) return false;
         if (!npc.hasPathTargetPosition()) return true;
-        NavMeshPoint destination = isTactical(npc)
-                ? getTacticalAttackDestination(npc, target)
-                : getAttackSlotDestination(npc, target);
-        float near = npc.getAttackRange() + ATTACK_APPROACH_MARGIN;
-        if (!isTactical(npc) && distanceSquaredXZ(npc.getX(), npc.getZ(), target.getX(), target.getZ()) <= near * near) {
-            destination = new NavMeshPoint(target.getX(), target.getY(), target.getZ());
-        }
+        NavMeshPoint destination = getTacticalAttackDestination(npc, target);
         return destination != null && distanceSquaredXZ(
                 destination.x, destination.z,
                 npc.getLastPathTargetX(), npc.getLastPathTargetZ())
@@ -1676,7 +1740,11 @@ public class NpcManager {
     }
 
     private boolean isTargetNavigable(character.Character target) {
-        return target != null && target.getCurrentPolygonId() >= 0;
+        return target != null
+                && target.getUser() != null
+                && target.getHealth() > 0
+                && target.getCurrentPolygonId() >= 0
+                && characterManager.getByUserId(target.getUser().getId()) == target;
     }
 
     private boolean exceededChaseDistance(NpcItem npc) {
@@ -1814,11 +1882,55 @@ public class NpcManager {
         }
     }
 
+    /** -1 significa sem alvo; o ID e o identificador persistente do personagem. */
+    private void syncAttackTarget(NpcItem npc, character.Character target) {
+        long targetCharacterId = target == null ? -1L : target.getCharacterId();
+        setNpcVariables(npc, Arrays.asList(
+                new MMOItemVariable("targetCharacterId", targetCharacterId)), SyncKind.ATTACK);
+    }
+
+    /** Obrigatorio configurar as defesas calculadas pela classe do personagem. */
+    public interface CharacterDefenseProvider {
+        int physicalDefense(character.Character target);
+        int elementalDefense(character.Character target);
+    }
+
+    private CharacterDefenseProvider defenseProvider;
+
+    public synchronized void setCharacterDefenseProvider(CharacterDefenseProvider provider) {
+        if (provider == null) throw new IllegalArgumentException("DefenseProvider obrigatorio");
+        this.defenseProvider = provider;
+    }
+
     private void executeAttack(NpcItem npc) {
+        character.Character target = npc.getTarget();
+        if (!isTargetNavigable(target)) {
+            startReturning(npc);
+            return;
+        }
+        if (distanceSquaredXZ(npc.getX(), npc.getZ(), target.getX(), target.getZ())
+                > npc.getAttackRange() * npc.getAttackRange()) return;
+        // Sem formula de defesa configurada, nao inventar valores nem aplicar dano.
+        if (defenseProvider == null) {
+            throw new IllegalStateException("CharacterDefenseProvider nao configurado no NpcManager");
+        }
+        combat.CombatSystem.DamageResult result = combat.CombatSystem.applyNpcDamage(
+                npc.getNpcData(), target,
+                defenseProvider.physicalDefense(target),
+                defenseProvider.elementalDefense(target));
         npc.incrementAttackSequence();
         setNpcVariables(npc, Arrays.asList(
                 new MMOItemVariable("npcId", npc.getId()),
-                new MMOItemVariable("attackSequence", npc.getAttackSequence())), SyncKind.ATTACK);
+                new MMOItemVariable("targetCharacterId", target.getCharacterId()),
+                new MMOItemVariable("attackSequence", npc.getAttackSequence()),
+                new MMOItemVariable("attackPhase", "IMPACT"),
+                new MMOItemVariable("totalDamage", result.totalDamage),
+                new MMOItemVariable("physicalDamage", result.physicalDamage),
+                new MMOItemVariable("elementalDamage", result.elementalDamage),
+                new MMOItemVariable("targetHealth", result.healthAfter)), SyncKind.ATTACK);
+        if (result.healthAfter <= 0) {
+            onCharacterDied(target);
+        }
     }
     private void recordSpatial(long ns) {
         recordSync(ns);
