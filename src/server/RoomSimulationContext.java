@@ -118,7 +118,7 @@ public final class RoomSimulationContext {
                                float x, float y, float z) {
         SFSObject data = new SFSObject();
         data.putLong("characterId", character.getCharacterId());
-        data.putString("lifeState", state);
+        data.putShortString("lifeState", state);
         data.putInt("health", health);
         data.putInt("respawnDelayMs", 3000);
         data.putFloat("x", x); data.putFloat("y", y); data.putFloat("z", z);

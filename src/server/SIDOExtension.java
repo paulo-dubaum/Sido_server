@@ -178,14 +178,6 @@ public class SidoExtension extends SFSExtension {
 	public MapManager getMapManager() {
 		return mapManager;
 	}
-	
-	public void sendCharacterLife(SFSObject data, User user) {
-	    if (data == null || user == null || !user.isConnected()) {
-	        return;
-	    }
-
-	    send("characterLife", data, user);
-	}
 
 	/**
 	 * Compatibilidade temporaria com handlers existentes; use
@@ -213,6 +205,20 @@ public class SidoExtension extends SFSExtension {
 		if (context == null)
 			throw new IllegalStateException("Sala inicial nao registrada: " + STARTER_ROOM);
 		return context;
+	}
+	
+	public void sendCharacterLife(SFSObject data, User user) {
+		
+	    if (data == null || user == null || !user.isConnected()) {
+	    	trace(data);
+	    	trace(user);
+	    	trace(user.isConnected());
+	        return;
+	    }
+	    
+	    trace("characterLife");
+
+	    send("characterLife", data, user);
 	}
 
 	@Override

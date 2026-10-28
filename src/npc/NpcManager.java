@@ -161,8 +161,8 @@ public class NpcManager {
     private final CharacterManager characterManager;
     private final Map<Integer, NpcItem> npcs = new HashMap<>();
 
-    // Sincronizacao: simula a cada tick, transmite movimento a cada 2 ticks.
-    private static final int MOVEMENT_SYNC_TICKS = 2;
+    // Sincronizacao: transmite movimento a cada tick (100 ms se o scheduler executar a cada 100 ms).
+    private static final int MOVEMENT_SYNC_TICKS = 1;
     private static final float NETWORK_POSITION_EPSILON_SQ = 0.0001f;
     private final Map<Integer, PendingSync> pendingSync = new HashMap<>();
     private final Map<Integer, Integer> yieldSequences = new HashMap<>();
@@ -330,6 +330,38 @@ public class NpcManager {
                 ignoredUntilExit.remove(npc.getId());
             }
         }
+    }
+
+    /**
+     * Notifica um impacto valido causado por um personagem.
+     * Invocar somente depois de validar o ataque e aplicar dano ao NPC.
+     * Nao altera a vida do NPC nem substitui o fluxo de morte.
+     *
+     * @return true quando o NPC interrompeu RETURNING e passou a CHASE.
+     */
+    public synchronized boolean onNpcAttacked(int npcId, character.Character attacker) {
+        NpcItem npc = npcs.get(npcId);
+        if (npc == null || npc.getState() != NpcState.RETURNING
+                || npc.getCurrentHealth() <= 0 || !npc.isCombatant()
+                || !isTargetNavigable(attacker)) return false;
+
+        // Agressao explicita tem prioridade sobre a supressao de reacquisicao.
+        ignoredUntilExit.remove(npcId);
+        returnProgress.remove(npcId);
+        stuckStates.remove(npcId);
+        chaseProgress.remove(npcId);
+        tacticalDestinations.remove(npcId);
+        tacticalNextReposition.remove(npcId);
+        attackCycles.remove(npcId);
+        releaseAttackSlot(npc);
+        npc.clearPath();
+        npc.setTarget(attacker);
+        syncAttackTarget(npc, attacker);
+        chaseProgress.put(npcId, new ChaseProgress(
+                (float) Math.sqrt(distanceSquaredXZ(npc.getX(), npc.getZ(),
+                        attacker.getX(), attacker.getZ())), System.nanoTime()));
+        npc.setState(NpcState.CHASE);
+        return true;
     }
 
     public synchronized NpcItem getNpc(int mmoItemId) {
