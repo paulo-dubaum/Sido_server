@@ -1,0 +1,65 @@
+{
+  "regionId": "norencia",
+  "npcSpawns": [
+    {
+      "npcTypeId": 0,
+      "position": {
+        "x": 218.5,
+        "y": 6.02,
+        "z": 159.5
+      },
+      "count": 1,
+      "respawnSeconds": 30
+    },
+    {
+      "npcTypeId": 0,
+      "position": {
+        "x": 222.0,
+        "y": 6.02,
+        "z": 155.8
+      },
+      "count": 1,
+      "respawnSeconds": 30
+    },
+    {
+      "npcTypeId": 0,
+      "position": {
+        "x": 227.5,
+        "y": 6.02,
+        "z": 160.0
+      },
+      "count": 1,
+      "respawnSeconds": 30
+    },
+    {
+      "npcTypeId": 1,
+      "position": {
+        "x": 233.5,
+        "y": 6.02,
+        "z": 158.5
+      },
+      "count": 1,
+      "respawnSeconds": 30
+    },
+    {
+      "npcTypeId": 1,
+      "position": {
+        "x": 236.5,
+        "y": 6.02,
+        "z": 153.5
+      },
+      "count": 1,
+      "respawnSeconds": 30
+    },
+    {
+      "npcTypeId": 2,
+      "position": {
+        "x": 239.0,
+        "y": 6.02,
+        "z": 160.0
+      },
+      "count": 1,
+      "respawnSeconds": 30
+    }
+  ]
+}

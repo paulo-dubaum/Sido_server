@@ -1,0 +1,36 @@
+{
+  "classId": 1,
+  "level": 1,
+  "equipment": [
+    {
+      "slot": "HELMET",
+      "itemId": 40,
+      "refinementLevel": 0
+    },
+    {
+      "slot": "TORSO",
+      "itemId": 43,
+      "refinementLevel": 0
+    },
+    {
+      "slot": "PANTS",
+      "itemId": 44,
+      "refinementLevel": 0
+    },
+    {
+      "slot": "BOOTS",
+      "itemId": 45,
+      "refinementLevel": 0
+    },
+    {
+      "slot": "MAIN_HAND",
+      "itemId": 11,
+      "refinementLevel": 0
+    },
+    {
+      "slot": "OFF_HAND",
+      "itemId": 11,
+      "refinementLevel": 0
+    }
+  ]
+}

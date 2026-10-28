@@ -1,0 +1,126 @@
+{
+  "items": [
+    {
+      "id": 1,
+      "name": "Moeda de ouro",
+      "type": "GOLD"
+    },
+    {
+      "id": 10,
+      "name": "Espada longa",
+      "type": "WEAPON_ONE_HAND",
+      "requiredLevel": 1,
+      "allowedClassIds": [
+        1
+      ],
+      "maxRefinement": 20,
+      "minAttack": 20,
+      "maxAttack": 30,
+      "attackSpeed": 1.4,
+      "attackReachBonusMeters": 0.5
+    },
+    {
+      "id": 11,
+      "name": "Espada curta",
+      "type": "WEAPON_ONE_HAND",
+      "requiredLevel": 1,
+      "allowedClassIds": [
+        1
+      ],
+      "maxRefinement": 20,
+      "minAttack": 10,
+      "maxAttack": 20,
+      "attackSpeed": 1.8,
+      "attackReachBonusMeters": 0.5
+    },
+    {
+      "id": 20,
+      "name": "Arco de treino",
+      "type": "BOW",
+      "requiredLevel": 1,
+      "allowedClassIds": [
+        2
+      ],
+      "maxRefinement": 20,
+      "minAttack": 15,
+      "maxAttack": 25,
+      "attackSpeed": 1.2
+    },
+    {
+      "id": 21,
+      "name": "Aljava de treino",
+      "type": "QUIVER",
+      "requiredLevel": 1,
+      "allowedClassIds": [
+        2
+      ],
+      "maxRefinement": 20,
+      "minAttack": 3,
+      "maxAttack": 5
+    },
+    {
+      "id": 30,
+      "name": "Cajado de treino",
+      "type": "WEAPON_TWO_HAND",
+      "requiredLevel": 1,
+      "allowedClassIds": [
+        3
+      ],
+      "maxRefinement": 20,
+      "minAttack": 12,
+      "maxAttack": 18,
+      "attackSpeed": 1.1,
+      "attackReachBonusMeters": 0.7
+    },
+    {
+      "id": 40,
+      "name": "Elmo de treino",
+      "type": "HELMET",
+      "requiredLevel": 1,
+      "maxRefinement": 20,
+      "defense": 10
+    },
+    {
+      "id": 41,
+      "name": "Anel simples",
+      "type": "RING",
+      "requiredLevel": 1
+    },
+    {
+      "id": 42,
+      "name": "Pentagrama de fogo",
+      "type": "PENTAGRAM",
+      "requiredLevel": 20,
+      "maxRefinement": 15
+    },
+    {
+      "id": 50,
+      "name": "Pepita de ouro",
+      "type": "JEWEL"
+    },
+    {
+      "id": 43,
+      "name": "Torso de treino",
+      "type": "TORSO",
+      "requiredLevel": 1,
+      "maxRefinement": 20,
+      "defense": 16
+    },
+    {
+      "id": 44,
+      "name": "Calças de treino",
+      "type": "PANTS",
+      "requiredLevel": 1,
+      "maxRefinement": 20,
+      "defense": 12
+    },
+    {
+      "id": 45,
+      "name": "Botas de treino",
+      "type": "BOOTS",
+      "requiredLevel": 1,
+      "maxRefinement": 20,
+      "defense": 8
+    }
+  ]
+}

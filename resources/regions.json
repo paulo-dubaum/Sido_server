@@ -1,0 +1,8 @@
+{
+  "regions": [
+    {"id":"norencia","name":"Norencia","navMesh":"data/maps/Norencia.navmesh","spawns":"data/config/spawns/norencia.json","maxPlayersPerInstance":100},
+    {"id":"cordilheira","name":"Cordilheira","navMesh":"data/maps/Cordilheira.navmesh","spawns":"data/config/spawns/cordilheira.json","maxPlayersPerInstance":100},
+    {"id":"deserto","name":"Deserto","navMesh":"data/maps/Deserto.navmesh","spawns":"data/config/spawns/deserto.json","maxPlayersPerInstance":100},
+    {"id":"castelo","name":"Castelo","navMesh":"data/maps/Castelo.navmesh","spawns":"data/config/spawns/castelo.json","maxPlayersPerInstance":100}
+  ]
+}
