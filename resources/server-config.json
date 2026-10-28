@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "combat": {
+    "npcMaxLevel": 800,
+    "npcMitigation": {
+      "levelRanges": [
+        { "minLevel": 1, "maxLevel": 10, "percent": 0 },
+        { "minLevel": 11, "maxLevel": 25, "percent": 2 },
+        { "minLevel": 26, "maxLevel": 50, "percent": 4 },
+        { "minLevel": 51, "maxLevel": 100, "percent": 6 },
+        { "minLevel": 101, "maxLevel": 200, "percent": 8 },
+        { "minLevel": 201, "maxLevel": 400, "percent": 10 },
+        { "minLevel": 401, "maxLevel": 600, "percent": 12 },
+        { "minLevel": 601, "maxLevel": 800, "percent": 14 }
+      ],
+      "rankBonusPercentagePoints": {
+        "NORMAL": 0,
+        "COMMANDER": 1,
+        "BOSS": 2
+      }
+    }
+  },
+  "experience": {
+    "globalMultiplier": 1.0,
+    "happyHour": {
+      "enabled": true,
+      "multiplier": 2.0,
+      "startTime": "18:00",
+      "endTime": "20:00",
+      "timeZone": "America/Sao_Paulo"
+    }
+  },
+  "gold": {
+    "baseAmount": 15,
+    "globalMultiplier": 1.0,
+    "growthRatePerLevel": 0.04
+  }
+}
